@@ -1,12 +1,13 @@
 import React from "react";
 import { Tv, Film, Bookmark, CheckCircle2, XCircle } from "lucide-react";
+import { SearchBar } from "../components/SearchBar";
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center space-x-3 shrink-0">
             <div className="p-2 bg-indigo-600 rounded-lg text-white">
               <Tv className="w-5 h-5" />
             </div>
@@ -14,6 +15,7 @@ export default function Home() {
               Show Tracker
             </h1>
           </div>
+          <SearchBar />
         </div>
       </header>
 
