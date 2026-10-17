@@ -1,7 +1,12 @@
-import React from "react";
-import { Tv, Film, Bookmark, CheckCircle2, XCircle } from "lucide-react";
+"use client";
+
+import React, { useState } from "react";
+import { Tv, Film, Bookmark, CheckCircle2, XCircle, Settings } from "lucide-react";
+import { SettingsModal } from "../components/SettingsModal";
 
 export default function Home() {
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-10">
@@ -13,6 +18,17 @@ export default function Home() {
             <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
               Show Tracker
             </h1>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              aria-label="Settings"
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </header>
@@ -67,6 +83,11 @@ export default function Home() {
           </section>
         </div>
       </main>
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </div>
   );
 }
