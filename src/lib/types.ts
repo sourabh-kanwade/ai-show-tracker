@@ -16,6 +16,7 @@ export interface Title {
   genres: string[];
   firstAirDate: string | null;
   nextAirDate: string | null;
+  airingStatus?: string | null;
   totalEpisodes: number;
   watchedEpisodes: number;
   createdAt: string;
@@ -67,6 +68,7 @@ export interface CreateTitleInput {
   genres?: string[];
   firstAirDate?: string | null;
   nextAirDate?: string | null;
+  airingStatus?: string | null;
   totalEpisodes?: number;
   watchedEpisodes?: number;
   createdAt?: string;
