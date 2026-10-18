@@ -82,7 +82,10 @@ export function ShowDetailModal({
   const notesTimerRef = useRef<NodeJS.Timeout | null>(null);
   const activeTitleIdRef = useRef<string | null>(null);
   const notesRef = useRef(notes);
-  notesRef.current = notes;
+
+  useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
 
   // Sync notes & reset season when currentTitle id changes (e.g. opened for different title)
   useEffect(() => {

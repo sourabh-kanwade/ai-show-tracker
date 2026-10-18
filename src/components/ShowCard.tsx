@@ -26,9 +26,10 @@ export function hasUpcomingAirDate(
 ): boolean {
   if (!title.nextAirDate) return false;
 
+  const rawStatus = (title as unknown as Record<string, unknown>).status;
   const isEnded =
     title.airingStatus?.toLowerCase() === "ended" ||
-    (title as any).status?.toLowerCase?.() === "ended";
+    (typeof rawStatus === "string" && rawStatus.toLowerCase() === "ended");
 
   if (isEnded) return false;
 

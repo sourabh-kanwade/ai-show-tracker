@@ -120,7 +120,7 @@ describe("ShowDetailModal Component", () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
 
-    const { rerender } = render(
+    render(
       <ShowDetailModal
         isOpen={true}
         onClose={onClose}

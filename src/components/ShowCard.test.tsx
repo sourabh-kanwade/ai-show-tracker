@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ShowCard } from "./ShowCard";
-import type { Title, EpisodeRecord } from "../lib/types";
+import type { Title, EpisodeRecord, WatchStatus } from "../lib/types";
 
 describe("ShowCard Component", () => {
   const mockTitle: Title = {
@@ -199,7 +199,7 @@ describe("ShowCard Component", () => {
     it("omits the upcoming badge when title has ended via status: 'Ended'", () => {
       const endedTitle = {
         ...mockTitle,
-        status: "Ended" as any,
+        status: "Ended" as unknown as WatchStatus,
         nextAirDate: "2027-05-20",
       };
 

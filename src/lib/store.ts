@@ -6,7 +6,6 @@ import type {
   EpisodeSummary,
   TitleWithEpisodes,
   WatchingTitleProgress,
-  ActiveShowItem,
   QuickIncrementResult,
   CreateTitleInput,
   CreateEpisodeInput,
