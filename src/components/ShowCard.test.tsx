@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ShowCard } from "./ShowCard";
 import type { Title, EpisodeRecord } from "../lib/types";
 
@@ -87,5 +88,46 @@ describe("ShowCard Component", () => {
     const card = screen.getByTestId(`show-card-${mockTitle.id}`);
     card.click();
     expect(onSelect).toHaveBeenCalledWith(mockTitle);
+  });
+
+  it("renders prominent '+1 Episode' button when next episode is available", () => {
+    render(<ShowCard title={mockTitle} nextEpisode={mockNextEpisode} />);
+    const button = screen.getByRole("button", { name: /\+1 Episode/i });
+    expect(button).toBeInTheDocument();
+    expect(button).not.toBeDisabled();
+  });
+
+  it("disables '+1 Episode' button when no next episode is available", () => {
+    const caughtUpTitle: Title = {
+      ...mockTitle,
+      totalEpisodes: 10,
+      watchedEpisodes: 10,
+    };
+    render(<ShowCard title={caughtUpTitle} nextEpisode={null} />);
+    const button = screen.getByRole("button", { name: /\+1 Episode/i });
+    expect(button).toBeInTheDocument();
+    expect(button).toBeDisabled();
+  });
+
+  it("calls onQuickIncrement when '+1 Episode' button is clicked and stops propagation", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const onQuickIncrement = vi.fn();
+
+    render(
+      <ShowCard
+        title={mockTitle}
+        nextEpisode={mockNextEpisode}
+        onSelect={onSelect}
+        onQuickIncrement={onQuickIncrement}
+      />
+    );
+
+    const button = screen.getByRole("button", { name: /\+1 Episode/i });
+    await user.click(button);
+
+    expect(onQuickIncrement).toHaveBeenCalledTimes(1);
+    expect(onQuickIncrement).toHaveBeenCalledWith(mockTitle);
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });

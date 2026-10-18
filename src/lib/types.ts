@@ -53,6 +53,13 @@ export interface WatchingTitleProgress {
 
 export type ActiveShowItem = WatchingTitleProgress;
 
+export interface QuickIncrementResult {
+  title: Title;
+  watchedEpisode: EpisodeRecord | null;
+  nextEpisode: EpisodeRecord | null;
+}
+
+
 export interface CreateTitleInput {
   id?: string;
   externalId?: string | number | null;

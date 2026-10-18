@@ -520,4 +520,163 @@ describe("TrackerStore", () => {
       expect(activeShows).toEqual([]);
     });
   });
+
+  describe("quickIncrement", () => {
+    it("marks the next sequential episode in the current season as watched and advances progress", async () => {
+      const title = await store.addTitle(
+        {
+          name: "Severance",
+          type: "tv",
+          status: "Watching",
+        },
+        [
+          {
+            seasonNumber: 1,
+            episodeNumber: 1,
+            name: "Good News About Hell",
+            isWatched: false,
+          },
+          {
+            seasonNumber: 1,
+            episodeNumber: 2,
+            name: "Half Loop",
+            isWatched: false,
+          },
+        ]
+      );
+
+      const res = await store.quickIncrement(title.id);
+      expect(res).not.toBeNull();
+      expect(res?.watchedEpisode?.name).toBe("Good News About Hell");
+      expect(res?.watchedEpisode?.seasonNumber).toBe(1);
+      expect(res?.watchedEpisode?.episodeNumber).toBe(1);
+      expect(res?.watchedEpisode?.isWatched).toBe(true);
+      expect(res?.watchedEpisode?.watchedAt).toBeDefined();
+
+      expect(res?.nextEpisode?.name).toBe("Half Loop");
+      expect(res?.nextEpisode?.seasonNumber).toBe(1);
+      expect(res?.nextEpisode?.episodeNumber).toBe(2);
+
+      expect(res?.title.watchedEpisodes).toBe(1);
+
+      // Verify database persistence
+      const fetched = await store.getTitle(title.id);
+      expect(fetched?.watchedEpisodes).toBe(1);
+      expect(fetched?.episodes[0].isWatched).toBe(true);
+      expect(fetched?.episodes[1].isWatched).toBe(false);
+      expect(fetched?.episodeSummary.nextEpisode?.name).toBe("Half Loop");
+    });
+
+    it("correctly rolls over from Season N Episode X to Season N+1 Episode 1", async () => {
+      const title = await store.addTitle(
+        {
+          name: "Succession",
+          type: "tv",
+          status: "Watching",
+        },
+        [
+          {
+            seasonNumber: 1,
+            episodeNumber: 9,
+            name: "Pre-Nuptial",
+            isWatched: true,
+          },
+          {
+            seasonNumber: 1,
+            episodeNumber: 10,
+            name: "Nobody Is Ever Missing",
+            isWatched: false,
+          },
+          {
+            seasonNumber: 2,
+            episodeNumber: 1,
+            name: "The Summer Palace",
+            isWatched: false,
+          },
+          {
+            seasonNumber: 2,
+            episodeNumber: 2,
+            name: "Vaulter",
+            isWatched: false,
+          },
+        ]
+      );
+
+      // First increment: marks S01E10 as watched, next should roll over to S02E01
+      const res1 = await store.quickIncrement(title.id);
+      expect(res1?.watchedEpisode?.seasonNumber).toBe(1);
+      expect(res1?.watchedEpisode?.episodeNumber).toBe(10);
+      expect(res1?.watchedEpisode?.name).toBe("Nobody Is Ever Missing");
+
+      expect(res1?.nextEpisode?.seasonNumber).toBe(2);
+      expect(res1?.nextEpisode?.episodeNumber).toBe(1);
+      expect(res1?.nextEpisode?.name).toBe("The Summer Palace");
+      expect(res1?.title.watchedEpisodes).toBe(2);
+
+      // Second increment: marks S02E01 as watched, next should be S02E02
+      const res2 = await store.quickIncrement(title.id);
+      expect(res2?.watchedEpisode?.seasonNumber).toBe(2);
+      expect(res2?.watchedEpisode?.episodeNumber).toBe(1);
+      expect(res2?.watchedEpisode?.name).toBe("The Summer Palace");
+
+      expect(res2?.nextEpisode?.seasonNumber).toBe(2);
+      expect(res2?.nextEpisode?.episodeNumber).toBe(2);
+      expect(res2?.nextEpisode?.name).toBe("Vaulter");
+      expect(res2?.title.watchedEpisodes).toBe(3);
+    });
+
+    it("handles the final episode, setting nextEpisode to null", async () => {
+      const title = await store.addTitle(
+        {
+          name: "Fleabag",
+          type: "tv",
+          status: "Watching",
+        },
+        [
+          {
+            seasonNumber: 2,
+            episodeNumber: 6,
+            name: "Episode 6",
+            isWatched: false,
+          },
+        ]
+      );
+
+      const res = await store.quickIncrement(title.id);
+      expect(res?.watchedEpisode?.name).toBe("Episode 6");
+      expect(res?.nextEpisode).toBeNull();
+      expect(res?.title.watchedEpisodes).toBe(1);
+
+      // Further call when all are watched
+      const resAfter = await store.quickIncrement(title.id);
+      expect(resAfter?.watchedEpisode).toBeNull();
+      expect(resAfter?.nextEpisode).toBeNull();
+      expect(resAfter?.title.watchedEpisodes).toBe(1);
+    });
+
+    it("handles titles without episode records (e.g. movies) by incrementing watchedEpisodes", async () => {
+      const movie = await store.addTitle({
+        name: "Inception",
+        type: "movie",
+        status: "Watching",
+        totalEpisodes: 1,
+        watchedEpisodes: 0,
+      });
+
+      const res = await store.quickIncrement(movie.id);
+      expect(res?.title.watchedEpisodes).toBe(1);
+      expect(res?.watchedEpisode).toBeNull();
+      expect(res?.nextEpisode).toBeNull();
+
+      // Capped at totalEpisodes
+      const resCapped = await store.quickIncrement(movie.id);
+      expect(resCapped?.title.watchedEpisodes).toBe(1);
+    });
+
+    it("returns null for non-existent titleId", async () => {
+      const res = await store.quickIncrement("non-existent-id");
+      expect(res).toBeNull();
+    });
+  });
 });
+

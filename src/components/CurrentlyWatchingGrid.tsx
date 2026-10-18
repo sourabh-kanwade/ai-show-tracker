@@ -10,13 +10,24 @@ import type { Title } from "../lib/types";
 export interface CurrentlyWatchingGridProps {
   store?: TrackerStore;
   onSelectTitle?: (title: Title) => void;
+  onQuickIncrement?: (title: Title) => void;
 }
 
 export function CurrentlyWatchingGrid({
   store = defaultStore,
   onSelectTitle,
+  onQuickIncrement,
 }: CurrentlyWatchingGridProps) {
   const activeShows = useLiveQuery(() => store.getActiveWatchingShows(), [store]);
+
+  const handleQuickIncrement = async (title: Title) => {
+    try {
+      await store.quickIncrement(title.id);
+      onQuickIncrement?.(title);
+    } catch (err) {
+      console.error("Failed to quick increment episode:", err);
+    }
+  };
 
   if (activeShows === undefined) {
     return (
@@ -53,6 +64,7 @@ export function CurrentlyWatchingGrid({
           title={title}
           nextEpisode={nextEpisode}
           onSelect={onSelectTitle}
+          onQuickIncrement={handleQuickIncrement}
         />
       ))}
     </div>
