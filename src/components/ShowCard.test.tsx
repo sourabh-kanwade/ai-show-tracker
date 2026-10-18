@@ -1,0 +1,91 @@
+import React from "react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { ShowCard } from "./ShowCard";
+import type { Title, EpisodeRecord } from "../lib/types";
+
+describe("ShowCard Component", () => {
+  const mockTitle: Title = {
+    id: "show-1",
+    externalId: 101,
+    type: "tv",
+    name: "Severance",
+    overview: "Office thriller",
+    posterUrl: "https://static.tvmaze.com/uploads/images/medium_portrait/severance.jpg",
+    backdropUrl: null,
+    status: "Watching",
+    rating: 9,
+    notes: null,
+    genres: ["Drama", "Sci-Fi"],
+    firstAirDate: "2022-02-18",
+    nextAirDate: null,
+    totalEpisodes: 10,
+    watchedEpisodes: 3,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+
+  const mockNextEpisode: EpisodeRecord = {
+    id: "ep-4",
+    titleId: "show-1",
+    seasonNumber: 1,
+    episodeNumber: 4,
+    name: "The You You Are",
+    airDate: "2022-03-04",
+    overview: "A strange book is discovered",
+    isWatched: false,
+    watchedAt: null,
+  };
+
+  it("renders show title, poster thumbnail, next episode badge, and progress bar", () => {
+    render(<ShowCard title={mockTitle} nextEpisode={mockNextEpisode} />);
+
+    // Title
+    expect(screen.getByRole("heading", { level: 3, name: "Severance" })).toBeInTheDocument();
+
+    // Poster image
+    const poster = screen.getByRole("img", { name: "Severance" });
+    expect(poster).toHaveAttribute("src", mockTitle.posterUrl);
+
+    // Next episode badge (formatted as S01E04)
+    expect(screen.getByText("S01E04")).toBeInTheDocument();
+
+    // Progress bar (3 of 10 = 30%)
+    const progressBar = screen.getByRole("progressbar");
+    expect(progressBar).toHaveAttribute("aria-valuenow", "30");
+    expect(progressBar).toHaveAttribute("aria-valuemin", "0");
+    expect(progressBar).toHaveAttribute("aria-valuemax", "100");
+    expect(screen.getByText("3 / 10 eps (30%)")).toBeInTheDocument();
+  });
+
+  it("renders fallback placeholder when posterUrl is null", () => {
+    const titleWithoutPoster: Title = {
+      ...mockTitle,
+      posterUrl: null,
+    };
+
+    render(<ShowCard title={titleWithoutPoster} nextEpisode={mockNextEpisode} />);
+    expect(screen.getByLabelText("No poster available")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("handles show with no next episode gracefully and displays Caught Up when all episodes watched", () => {
+    const caughtUpTitle: Title = {
+      ...mockTitle,
+      totalEpisodes: 10,
+      watchedEpisodes: 10,
+    };
+    render(<ShowCard title={caughtUpTitle} nextEpisode={null} />);
+    expect(screen.queryByText(/^S\d\dE\d\d$/)).not.toBeInTheDocument();
+    expect(screen.getByText("Caught Up")).toBeInTheDocument();
+  });
+
+  it("calls onSelect when the card is clicked", async () => {
+    const onSelect = vi.fn();
+    render(<ShowCard title={mockTitle} nextEpisode={mockNextEpisode} onSelect={onSelect} />);
+
+    const card = screen.getByTestId(`show-card-${mockTitle.id}`);
+    card.click();
+    expect(onSelect).toHaveBeenCalledWith(mockTitle);
+  });
+});

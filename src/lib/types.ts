@@ -46,6 +46,13 @@ export interface TitleWithEpisodes extends Title {
   episodeSummary: EpisodeSummary;
 }
 
+export interface WatchingTitleProgress {
+  title: Title;
+  nextEpisode: EpisodeRecord | null;
+}
+
+export type ActiveShowItem = WatchingTitleProgress;
+
 export interface CreateTitleInput {
   id?: string;
   externalId?: string | number | null;

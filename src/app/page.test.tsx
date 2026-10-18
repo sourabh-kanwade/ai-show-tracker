@@ -37,9 +37,15 @@ describe("Show Tracker App Shell (Smoke Test)", () => {
     expect(screen.getByRole("tab", { name: /dropped/i })).toBeInTheDocument();
   });
 
-  it("renders a container for tracked titles", () => {
+  it("renders a container for tracked titles with Currently Watching section", async () => {
     render(<Page />);
     const main = screen.getByRole("main");
     expect(main).toBeInTheDocument();
+
+    expect(screen.getByRole("region", { name: /currently watching/i })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText(/no shows currently being watched/i)).toBeInTheDocument();
+    });
   });
 });

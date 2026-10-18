@@ -458,4 +458,66 @@ describe("TrackerStore", () => {
       expect(result).toBeNull();
     });
   });
+
+  describe("getActiveWatchingShows", () => {
+    it("returns only watching titles with their next unwatched episode", async () => {
+      // 1. Add title in "Plan to Watch"
+      await store.addTitle({
+        name: "Watchlist Show",
+        type: "tv",
+        status: "Plan to Watch",
+      });
+
+      // 2. Add title in "Watching" with 2 episodes, first one watched
+      const watchingTitle = await store.addTitle(
+        {
+          name: "Active Show",
+          type: "tv",
+          status: "Watching",
+          totalEpisodes: 2,
+          watchedEpisodes: 1,
+        },
+        [
+          {
+            seasonNumber: 1,
+            episodeNumber: 1,
+            name: "Pilot",
+            isWatched: true,
+          },
+          {
+            seasonNumber: 1,
+            episodeNumber: 2,
+            name: "Episode 2",
+            isWatched: false,
+          },
+        ]
+      );
+
+      // 3. Add title in "Completed"
+      await store.addTitle({
+        name: "Completed Show",
+        type: "tv",
+        status: "Completed",
+      });
+
+      const activeShows = await store.getActiveWatchingShows();
+      expect(activeShows).toHaveLength(1);
+      expect(activeShows[0].title.id).toBe(watchingTitle.id);
+      expect(activeShows[0].title.name).toBe("Active Show");
+      expect(activeShows[0].nextEpisode?.name).toBe("Episode 2");
+      expect(activeShows[0].nextEpisode?.seasonNumber).toBe(1);
+      expect(activeShows[0].nextEpisode?.episodeNumber).toBe(2);
+    });
+
+    it("returns empty array when no titles have Watching status", async () => {
+      await store.addTitle({
+        name: "Watchlist Show",
+        type: "tv",
+        status: "Plan to Watch",
+      });
+
+      const activeShows = await store.getActiveWatchingShows();
+      expect(activeShows).toEqual([]);
+    });
+  });
 });

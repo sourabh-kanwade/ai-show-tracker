@@ -5,12 +5,18 @@ import type {
   WatchStatus,
   EpisodeSummary,
   TitleWithEpisodes,
+  WatchingTitleProgress,
+  ActiveShowItem,
   CreateTitleInput,
   CreateEpisodeInput,
 } from "./types";
 
 export * from "./types";
 export * from "./db";
+
+export function findNextEpisode(episodes: EpisodeRecord[]): EpisodeRecord | null {
+  return episodes.find((e) => !e.isWatched) ?? null;
+}
 
 export class TrackerStore {
   constructor(public readonly db: ShowTrackerDB = defaultDb) {}
@@ -80,7 +86,7 @@ export class TrackerStore {
       total: sortedEpisodes.length,
       watched: sortedEpisodes.filter((e) => e.isWatched).length,
       unwatched: sortedEpisodes.filter((e) => !e.isWatched).length,
-      nextEpisode: sortedEpisodes.find((e) => !e.isWatched) ?? null,
+      nextEpisode: findNextEpisode(sortedEpisodes),
     };
 
     return {
@@ -100,7 +106,7 @@ export class TrackerStore {
     const watched = episodes.filter((e) => e.isWatched).length;
     const total = episodes.length;
     const unwatched = total - watched;
-    const nextEpisode = episodes.find((e) => !e.isWatched) ?? null;
+    const nextEpisode = findNextEpisode(episodes);
 
     return {
       ...title,
@@ -212,6 +218,30 @@ export class TrackerStore {
     });
 
     return updatedEpisode;
+  }
+
+  async getActiveWatchingShows(): Promise<WatchingTitleProgress[]> {
+    const titles = await this.db.titles
+      .where("status")
+      .equals("Watching")
+      .toArray();
+
+    titles.sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+
+    const activeShows: WatchingTitleProgress[] = await Promise.all(
+      titles.map(async (title) => {
+        const episodes = await this.getEpisodes(title.id);
+        const nextEpisode = findNextEpisode(episodes);
+        return {
+          title,
+          nextEpisode,
+        };
+      })
+    );
+
+    return activeShows;
   }
 }
 

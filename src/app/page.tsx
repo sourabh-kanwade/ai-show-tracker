@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { Tv, Film, Bookmark, CheckCircle2, XCircle, Settings } from "lucide-react";
+import { Tv, Bookmark, CheckCircle2, XCircle, Settings } from "lucide-react";
 import { SearchBar } from "../components/SearchBar";
 import { SettingsModal } from "../components/SettingsModal";
+import { CurrentlyWatchingGrid } from "../components/CurrentlyWatchingGrid";
 
 export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -76,12 +77,9 @@ export default function Home() {
             </button>
           </div>
 
-          <section aria-label="Tracked titles" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="col-span-full text-center py-12 text-slate-500">
-              <Film className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p className="text-base font-medium">No titles tracked yet</p>
-              <p className="text-sm mt-1">Search for movies or TV shows to start tracking.</p>
-            </div>
+          <section aria-label="Currently Watching">
+            <h2 className="sr-only">Currently Watching</h2>
+            <CurrentlyWatchingGrid />
           </section>
         </div>
       </main>
