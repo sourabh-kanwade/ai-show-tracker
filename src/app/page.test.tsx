@@ -243,4 +243,53 @@ describe("Dashboard Tab Switching & Catalog Integration", () => {
     const inDb = await store.getTitlesByStatus("Plan to Watch");
     expect(inDb).toHaveLength(0);
   });
+
+  it("completes a show via '+1 Episode' on finale, showing celebration toast and moving it from Watching to Completed tab", async () => {
+    const user = userEvent.setup();
+
+    await store.addTitle(
+      {
+        name: "Ted Lasso",
+        type: "tv",
+        status: "Watching",
+      },
+      [
+        {
+          seasonNumber: 3,
+          episodeNumber: 12,
+          name: "So Long, Farewell",
+          isWatched: false,
+        },
+      ]
+    );
+
+    render(<Page store={store} />);
+
+    // In Watching tab, Ted Lasso appears
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 3, name: "Ted Lasso" })).toBeInTheDocument();
+    });
+
+    // Click +1 Episode (series finale)
+    const incrementBtn = screen.getByRole("button", { name: /\+1 Episode/i });
+    await user.click(incrementBtn);
+
+    // Toast appears
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("You finished Ted Lasso!");
+    });
+
+    // Show is no longer in Currently Watching
+    expect(screen.queryByRole("heading", { level: 3, name: "Ted Lasso" })).not.toBeInTheDocument();
+    expect(screen.getByText(/no shows currently being watched/i)).toBeInTheDocument();
+
+    // Switch to Completed tab
+    const completedTab = screen.getByRole("tab", { name: /completed/i });
+    await user.click(completedTab);
+
+    // Show is now visible in Completed tab
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 3, name: "Ted Lasso" })).toBeInTheDocument();
+    });
+  });
 });

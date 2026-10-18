@@ -270,4 +270,90 @@ describe("CurrentlyWatchingGrid Component", () => {
       expect.objectContaining({ id: created.id, name: "Slow Horses" })
     );
   });
+
+  it("reactively moves show off Currently Watching grid and displays celebration toast when series finale is watched", async () => {
+    const user = userEvent.setup();
+
+    const created = await store.addTitle(
+      {
+        name: "Succession",
+        type: "tv",
+        status: "Watching",
+      },
+      [
+        {
+          seasonNumber: 4,
+          episodeNumber: 10,
+          name: "With Open Eyes",
+          isWatched: false,
+        },
+      ]
+    );
+
+    render(<CurrentlyWatchingGrid store={store} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 3, name: "Succession" })).toBeInTheDocument();
+    });
+
+    const incrementBtn = screen.getByRole("button", { name: /\+1 Episode/i });
+    await user.click(incrementBtn);
+
+    // Toast appears with celebration message
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("You finished Succession!");
+    });
+
+    // The show has reactively moved off the grid
+    expect(screen.queryByRole("heading", { level: 3, name: "Succession" })).not.toBeInTheDocument();
+
+    // Since it was the only show, empty state is displayed along with toast
+    expect(screen.getByText(/no shows currently being watched/i)).toBeInTheDocument();
+
+    // Verify DB title status is Completed
+    const fetched = await store.getTitle(created.id);
+    expect(fetched?.status).toBe("Completed");
+  });
+
+  it("does not display completion toast when incrementing an intermediate episode", async () => {
+    const user = userEvent.setup();
+
+    await store.addTitle(
+      {
+        name: "Dark",
+        type: "tv",
+        status: "Watching",
+      },
+      [
+        {
+          seasonNumber: 1,
+          episodeNumber: 1,
+          name: "Secrets",
+          isWatched: false,
+        },
+        {
+          seasonNumber: 1,
+          episodeNumber: 2,
+          name: "Lies",
+          isWatched: false,
+        },
+      ]
+    );
+
+    render(<CurrentlyWatchingGrid store={store} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 3, name: "Dark" })).toBeInTheDocument();
+    });
+
+    const incrementBtn = screen.getByRole("button", { name: /\+1 Episode/i });
+    await user.click(incrementBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("S01E02")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText(/You finished/i)).not.toBeInTheDocument();
+  });
 });

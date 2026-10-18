@@ -58,6 +58,7 @@ export interface QuickIncrementResult {
   title: Title;
   watchedEpisode: EpisodeRecord | null;
   nextEpisode: EpisodeRecord | null;
+  isCompleted: boolean;
 }
 
 
