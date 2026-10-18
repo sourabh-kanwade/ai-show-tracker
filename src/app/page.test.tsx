@@ -1,7 +1,9 @@
-import { describe, it, expect } from "vitest";
+import React from "react";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Page from "./page";
+import { ShowTrackerDB, TrackerStore } from "../lib/store";
 
 describe("Show Tracker App Shell (Smoke Test)", () => {
   it("renders the application header and branding", () => {
@@ -47,5 +49,145 @@ describe("Show Tracker App Shell (Smoke Test)", () => {
     await waitFor(() => {
       expect(screen.getByText(/no shows currently being watched/i)).toBeInTheDocument();
     });
+  });
+});
+
+describe("Dashboard Tab Switching & Catalog Integration", () => {
+  let db: ShowTrackerDB;
+  let store: TrackerStore;
+
+  beforeEach(() => {
+    const dbName = `test-page-db-${Math.random().toString(36).substring(2, 9)}`;
+    db = new ShowTrackerDB(dbName);
+    store = new TrackerStore(db);
+  });
+
+  afterEach(async () => {
+    await db.delete();
+  });
+
+  it("switches tabs between Watching, Watchlist, Completed, and Dropped", async () => {
+    const user = userEvent.setup();
+    render(<Page store={store} />);
+
+    // Initially on Watching
+    const watchingTab = screen.getByRole("tab", { name: /watching/i });
+    const watchlistTab = screen.getByRole("tab", { name: /watchlist/i });
+    const completedTab = screen.getByRole("tab", { name: /completed/i });
+    const droppedTab = screen.getByRole("tab", { name: /dropped/i });
+
+    expect(watchingTab).toHaveAttribute("aria-selected", "true");
+    expect(watchlistTab).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("region", { name: /currently watching/i })).toBeInTheDocument();
+
+    // Click Watchlist
+    await user.click(watchlistTab);
+    expect(watchlistTab).toHaveAttribute("aria-selected", "true");
+    expect(watchingTab).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("region", { name: /watchlist/i })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/your watchlist is empty/i)).toBeInTheDocument();
+    });
+
+    // Click Completed
+    await user.click(completedTab);
+    expect(completedTab).toHaveAttribute("aria-selected", "true");
+    expect(watchlistTab).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("region", { name: /completed/i })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/no completed titles/i)).toBeInTheDocument();
+    });
+
+    // Click Dropped
+    await user.click(droppedTab);
+    expect(droppedTab).toHaveAttribute("aria-selected", "true");
+    expect(completedTab).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("region", { name: /dropped/i })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/no dropped titles/i)).toBeInTheDocument();
+    });
+
+    // Click back to Watching
+    await user.click(watchingTab);
+    expect(watchingTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("region", { name: /currently watching/i })).toBeInTheDocument();
+  });
+
+  it("allows starting to watch a title from Watchlist, moving it to Watching reactively", async () => {
+    const user = userEvent.setup();
+
+    // Add a title to Plan to Watch
+    await store.addTitle({
+      name: "The White Lotus",
+      type: "tv",
+      status: "Plan to Watch",
+      totalEpisodes: 6,
+    });
+
+    render(<Page store={store} />);
+
+    // Switch to Watchlist tab
+    const watchlistTab = screen.getByRole("tab", { name: /watchlist/i });
+    await user.click(watchlistTab);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 3, name: "The White Lotus" })).toBeInTheDocument();
+    });
+
+    // Click Start Watching
+    const startWatchingBtn = screen.getByRole("button", { name: /start watching/i });
+    await user.click(startWatchingBtn);
+
+    // Watchlist should now be empty
+    await waitFor(() => {
+      expect(screen.getByText(/your watchlist is empty/i)).toBeInTheDocument();
+    });
+
+    // Switch to Watching tab
+    const watchingTab = screen.getByRole("tab", { name: /watching/i });
+    await user.click(watchingTab);
+
+    // The show should appear in Currently Watching
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 3, name: "The White Lotus" })).toBeInTheDocument();
+    });
+  });
+
+  it("allows deleting a title with confirmation from Watchlist tab", async () => {
+    const user = userEvent.setup();
+
+    await store.addTitle({
+      name: "Silo",
+      type: "tv",
+      status: "Plan to Watch",
+      totalEpisodes: 10,
+    });
+
+    render(<Page store={store} />);
+
+    // Go to Watchlist
+    const watchlistTab = screen.getByRole("tab", { name: /watchlist/i });
+    await user.click(watchlistTab);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 3, name: "Silo" })).toBeInTheDocument();
+    });
+
+    // Click Delete
+    const deleteBtn = screen.getByRole("button", { name: /delete silo/i });
+    await user.click(deleteBtn);
+
+    // Confirmation dialog
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    const confirmBtn = screen.getByRole("button", { name: /^delete$/i });
+    await user.click(confirmBtn);
+
+    // Confirmed deleted
+    await waitFor(() => {
+      expect(screen.getByText(/your watchlist is empty/i)).toBeInTheDocument();
+    });
+
+    const inDb = await store.getTitlesByStatus("Plan to Watch");
+    expect(inDb).toHaveLength(0);
   });
 });
