@@ -221,6 +221,51 @@ export class TrackerStore {
     return updatedEpisode;
   }
 
+  async markSeasonWatched(
+    titleId: string,
+    seasonNumber: number,
+    isWatched: boolean = true
+  ): Promise<EpisodeRecord[]> {
+    const title = await this.db.titles.get(titleId);
+    if (!title) {
+      return [];
+    }
+
+    const allEpisodes = await this.getEpisodes(titleId);
+    const seasonEpisodes = allEpisodes.filter((e) => e.seasonNumber === seasonNumber);
+    if (seasonEpisodes.length === 0) {
+      return [];
+    }
+
+    const now = new Date().toISOString();
+    let updatedEpisodes: EpisodeRecord[] = [];
+
+    await this.db.transaction("rw", this.db.titles, this.db.episodes, async () => {
+      for (const ep of seasonEpisodes) {
+        const watchedAt = isWatched ? (ep.watchedAt ?? now) : null;
+        await this.db.episodes.update(ep.id, { isWatched, watchedAt });
+      }
+
+      const refreshedAll = await this.db.episodes
+        .where("titleId")
+        .equals(titleId)
+        .toArray();
+      const watchedEpisodes = refreshedAll.filter((e) => e.isWatched).length;
+
+      await this.db.titles.update(titleId, {
+        watchedEpisodes,
+        updatedAt: now,
+      });
+
+      const updatedList = await Promise.all(
+        seasonEpisodes.map((ep) => this.db.episodes.get(ep.id))
+      );
+      updatedEpisodes = updatedList.filter((ep): ep is EpisodeRecord => ep !== undefined);
+    });
+
+    return updatedEpisodes;
+  }
+
   async getActiveWatchingShows(): Promise<WatchingTitleProgress[]> {
     const titles = await this.db.titles
       .where("status")

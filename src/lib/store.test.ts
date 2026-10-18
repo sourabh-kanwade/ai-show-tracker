@@ -678,5 +678,86 @@ describe("TrackerStore", () => {
       expect(res).toBeNull();
     });
   });
+
+  describe("markSeasonWatched", () => {
+    it("marks all episodes of the given season as watched and updates title watchedEpisodes", async () => {
+      const title = await store.addTitle(
+        {
+          name: "Succession",
+          type: "tv",
+          status: "Watching",
+        },
+        [
+          { seasonNumber: 1, episodeNumber: 1, name: "Celebration", isWatched: false },
+          { seasonNumber: 1, episodeNumber: 2, name: "Shit Show at the Tit Factory", isWatched: false },
+          { seasonNumber: 1, episodeNumber: 3, name: "Lifeboats", isWatched: false },
+          { seasonNumber: 2, episodeNumber: 1, name: "The Summer Palace", isWatched: false },
+          { seasonNumber: 2, episodeNumber: 2, name: "Vaulter", isWatched: false },
+        ]
+      );
+
+      expect(title.watchedEpisodes).toBe(0);
+
+      // Mark season 1 as watched
+      const updatedSeason1 = await store.markSeasonWatched(title.id, 1);
+      expect(updatedSeason1).toHaveLength(3);
+      expect(updatedSeason1.every((ep) => ep.isWatched)).toBe(true);
+      expect(updatedSeason1.every((ep) => ep.watchedAt !== null)).toBe(true);
+
+      // Check title watched count and episodes
+      const fetched = await store.getTitle(title.id);
+      expect(fetched?.watchedEpisodes).toBe(3);
+      expect(fetched?.episodeSummary.watched).toBe(3);
+      expect(fetched?.episodeSummary.unwatched).toBe(2);
+      expect(fetched?.episodeSummary.nextEpisode?.seasonNumber).toBe(2);
+      expect(fetched?.episodeSummary.nextEpisode?.episodeNumber).toBe(1);
+
+      // Season 2 episodes remain untouched
+      const season2Eps = fetched?.episodes.filter((e) => e.seasonNumber === 2);
+      expect(season2Eps?.every((ep) => !ep.isWatched)).toBe(true);
+    });
+
+    it("can mark all episodes of a season as unwatched when isWatched is false", async () => {
+      const title = await store.addTitle(
+        {
+          name: "Severance",
+          type: "tv",
+          status: "Watching",
+        },
+        [
+          { seasonNumber: 1, episodeNumber: 1, name: "Good News About Hell", isWatched: true },
+          { seasonNumber: 1, episodeNumber: 2, name: "Half Loop", isWatched: true },
+          { seasonNumber: 2, episodeNumber: 1, name: "Episode 1", isWatched: false },
+        ]
+      );
+
+      expect(title.watchedEpisodes).toBe(2);
+
+      // Mark season 1 as unwatched
+      const updatedSeason1 = await store.markSeasonWatched(title.id, 1, false);
+      expect(updatedSeason1).toHaveLength(2);
+      expect(updatedSeason1.every((ep) => !ep.isWatched)).toBe(true);
+      expect(updatedSeason1.every((ep) => ep.watchedAt === null)).toBe(true);
+
+      const fetched = await store.getTitle(title.id);
+      expect(fetched?.watchedEpisodes).toBe(0);
+      expect(fetched?.episodeSummary.watched).toBe(0);
+      expect(fetched?.episodeSummary.nextEpisode?.seasonNumber).toBe(1);
+      expect(fetched?.episodeSummary.nextEpisode?.episodeNumber).toBe(1);
+    });
+
+    it("returns empty array for non-existent title or season without episodes", async () => {
+      const resNonExistentTitle = await store.markSeasonWatched("invalid-id", 1);
+      expect(resNonExistentTitle).toEqual([]);
+
+      const title = await store.addTitle({
+        name: "Movie Title",
+        type: "movie",
+      });
+      const resNonExistentSeason = await store.markSeasonWatched(title.id, 99);
+      expect(resNonExistentSeason).toEqual([]);
+    });
+  });
 });
+
 
