@@ -205,6 +205,7 @@ export default function Home({ store = defaultStore }: HomeProps = {}) {
         isOpen={!!selectedTitle}
         title={selectedTitle}
         onClose={() => setSelectedTitle(null)}
+        onTitleDeleted={() => setSelectedTitle(null)}
         store={store}
       />
     </div>

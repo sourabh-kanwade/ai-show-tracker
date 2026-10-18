@@ -225,6 +225,8 @@ export class TrackerStore {
       };
       if (isCompleted) {
         updates.status = "Completed";
+      } else if (!isWatched && title?.status === "Completed") {
+        updates.status = "Watching";
       }
 
       await this.db.titles.update(episode.titleId, updates);
@@ -264,10 +266,23 @@ export class TrackerStore {
         .toArray();
       const watchedEpisodes = refreshedAll.filter((e) => e.isWatched).length;
 
-      await this.db.titles.update(titleId, {
+      const isCompleted =
+        refreshedAll.length > 0
+          ? refreshedAll.every((e) => e.isWatched)
+          : (title.totalEpisodes > 0 && watchedEpisodes >= title.totalEpisodes);
+
+      const updates: Partial<Title> = {
         watchedEpisodes,
         updatedAt: now,
-      });
+      };
+
+      if (isCompleted) {
+        updates.status = "Completed";
+      } else if (!isWatched && title.status === "Completed") {
+        updates.status = "Watching";
+      }
+
+      await this.db.titles.update(titleId, updates);
 
       const updatedList = await Promise.all(
         seasonEpisodes.map((ep) => this.db.episodes.get(ep.id))
@@ -300,6 +315,10 @@ export class TrackerStore {
     );
 
     return activeShows;
+  }
+
+  async getActiveWatchingTitles(): Promise<WatchingTitleProgress[]> {
+    return this.getActiveWatchingShows();
   }
 
   async quickIncrement(titleId: string): Promise<QuickIncrementResult | null> {
@@ -390,6 +409,48 @@ export class TrackerStore {
       nextEpisode,
       isCompleted,
     };
+  }
+
+  async importEpisodesForTitle(
+    titleId: string,
+    episodes: CreateEpisodeInput[]
+  ): Promise<EpisodeRecord[]> {
+    const title = await this.db.titles.get(titleId);
+    if (!title) {
+      throw new Error(`Title with id ${titleId} not found`);
+    }
+
+    const preparedEpisodes: EpisodeRecord[] = episodes.map((ep) => ({
+      id: ep.id ?? crypto.randomUUID(),
+      titleId,
+      seasonNumber: ep.seasonNumber,
+      episodeNumber: ep.episodeNumber,
+      name: ep.name,
+      airDate: ep.airDate ?? null,
+      overview: ep.overview ?? "",
+      isWatched: ep.isWatched ?? false,
+      watchedAt: ep.watchedAt ?? null,
+    }));
+
+    await this.db.transaction("rw", this.db.titles, this.db.episodes, async () => {
+      if (preparedEpisodes.length > 0) {
+        await this.db.episodes.bulkPut(preparedEpisodes);
+      }
+
+      const allEpisodes = await this.db.episodes
+        .where("titleId")
+        .equals(titleId)
+        .toArray();
+      const watchedEpisodes = allEpisodes.filter((e) => e.isWatched).length;
+
+      await this.db.titles.update(titleId, {
+        totalEpisodes: allEpisodes.length,
+        watchedEpisodes,
+        updatedAt: new Date().toISOString(),
+      });
+    });
+
+    return preparedEpisodes;
   }
 }
 

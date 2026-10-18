@@ -141,7 +141,7 @@ export function ShowCard({
                     onQuickIncrement(title);
                   }
                 }}
-                aria-label={`+1 Episode for ${title.name}`}
+                aria-label={`Quick Increment (+1 Episode) for ${title.name}`}
                 className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
                   hasNextEpisode
                     ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm hover:shadow cursor-pointer active:scale-95"

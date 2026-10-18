@@ -82,6 +82,81 @@ describe("TitleCatalogGrid Component", () => {
         expect(screen.getByText(/your watchlist is empty/i)).toBeInTheDocument();
       });
     });
+
+    it("clicking 'Start Watching' imports episodes via store.importEpisodesForTitle when show has externalId and no existing episodes", async () => {
+      const user = userEvent.setup();
+      const importSpy = vi.spyOn(store, "importEpisodesForTitle");
+
+      const created = await store.addTitle({
+        name: "Severance",
+        type: "tv",
+        externalId: 101,
+        status: "Plan to Watch",
+        totalEpisodes: 0,
+      });
+
+      const mockTvmazeShow = {
+        id: 101,
+        name: "Severance",
+        summary: "<p>Office thriller</p>",
+        image: null,
+        premiered: "2022-02-18",
+        genres: ["Drama"],
+        status: "Running",
+        _embedded: {
+          episodes: [
+            {
+              id: 1001,
+              name: "Good News About Hell",
+              season: 1,
+              number: 1,
+              airdate: "2022-02-18",
+              summary: "<p>Intro</p>",
+            },
+          ],
+        },
+      };
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockTvmazeShow,
+      } as unknown as Response);
+
+      render(
+        <TitleCatalogGrid
+          status="Plan to Watch"
+          store={store}
+          customFetch={mockFetch as unknown as typeof fetch}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole("heading", { level: 3, name: "Severance" })).toBeInTheDocument();
+      });
+
+      const startWatchingBtn = screen.getByRole("button", { name: /start watching/i });
+      await user.click(startWatchingBtn);
+
+      await waitFor(() => {
+        expect(importSpy).toHaveBeenCalledTimes(1);
+        expect(importSpy).toHaveBeenCalledWith(
+          created.id,
+          expect.arrayContaining([
+            expect.objectContaining({
+              name: "Good News About Hell",
+              seasonNumber: 1,
+              episodeNumber: 1,
+            }),
+          ])
+        );
+      });
+
+      await waitFor(async () => {
+        const fetched = await store.getTitle(created.id);
+        expect(fetched?.status).toBe("Watching");
+        expect(fetched?.totalEpisodes).toBe(1);
+      });
+    });
   });
 
   describe("Completed Tab", () => {

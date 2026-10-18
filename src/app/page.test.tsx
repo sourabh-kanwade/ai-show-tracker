@@ -280,8 +280,10 @@ describe("Dashboard Tab Switching & Catalog Integration", () => {
     });
 
     // Show is no longer in Currently Watching
-    expect(screen.queryByRole("heading", { level: 3, name: "Ted Lasso" })).not.toBeInTheDocument();
-    expect(screen.getByText(/no shows currently being watched/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { level: 3, name: "Ted Lasso" })).not.toBeInTheDocument();
+      expect(screen.getByText(/no shows currently being watched/i)).toBeInTheDocument();
+    });
 
     // Switch to Completed tab
     const completedTab = screen.getByRole("tab", { name: /completed/i });

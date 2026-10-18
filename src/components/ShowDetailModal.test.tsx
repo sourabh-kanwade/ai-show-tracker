@@ -520,4 +520,72 @@ describe("ShowDetailModal Component", () => {
       expect(screen.getByRole("tab", { name: /Season 2 \(0\/2\)/i })).toBeInTheDocument();
     });
   });
+
+  describe("Personal Notes Placeholder", () => {
+    it("renders personal notes textarea with updated placeholder without 'review'", () => {
+      render(<ShowDetailModal isOpen={true} onClose={vi.fn()} title={mockTitle} store={store} />);
+      const textarea = screen.getByLabelText(/personal notes/i);
+      expect(textarea).toHaveAttribute(
+        "placeholder",
+        "Add your thoughts or private notes here..."
+      );
+    });
+  });
+
+  describe("Delete Title in Detail Modal", () => {
+    it("renders Delete Title button in modal", () => {
+      render(<ShowDetailModal isOpen={true} onClose={vi.fn()} title={mockTitle} store={store} />);
+      expect(screen.getByRole("button", { name: /delete title/i })).toBeInTheDocument();
+    });
+
+    it("clicking Delete Title opens confirmation dialog, and cancelling leaves title untouched", async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      render(<ShowDetailModal isOpen={true} onClose={onClose} title={mockTitle} store={store} />);
+
+      const deleteBtn = screen.getByRole("button", { name: /delete title/i });
+      await user.click(deleteBtn);
+
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+      expect(screen.getByText(/are you sure you want to remove/i)).toBeInTheDocument();
+
+      const cancelBtn = screen.getByRole("button", { name: /cancel/i });
+      await user.click(cancelBtn);
+
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+      const titleInDb = await store.getTitle(mockTitle.id);
+      expect(titleInDb).not.toBeNull();
+    });
+
+    it("confirming deletion removes title from IndexedDB, closes modal, and notifies parent callback", async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      const onTitleDeleted = vi.fn();
+
+      render(
+        <ShowDetailModal
+          isOpen={true}
+          onClose={onClose}
+          onTitleDeleted={onTitleDeleted}
+          title={mockTitle}
+          store={store}
+        />
+      );
+
+      const deleteBtn = screen.getByRole("button", { name: /delete title/i });
+      await user.click(deleteBtn);
+
+      const confirmBtn = screen.getByRole("button", { name: /^delete$/i, hidden: false });
+      await user.click(confirmBtn);
+
+      await waitFor(() => {
+        expect(onTitleDeleted).toHaveBeenCalledWith(mockTitle.id);
+        expect(onClose).toHaveBeenCalled();
+      });
+
+      const titleInDb = await store.getTitle(mockTitle.id);
+      expect(titleInDb).toBeNull();
+    });
+  });
 });

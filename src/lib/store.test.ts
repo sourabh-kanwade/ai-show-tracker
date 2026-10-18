@@ -490,6 +490,31 @@ describe("TrackerStore", () => {
       const result = await store.toggleEpisodeWatched("missing-ep-id", true);
       expect(result).toBeNull();
     });
+
+    it("automatically reverts title status to 'Watching' when unchecking an episode on a title with 'Completed' status", async () => {
+      const title = await store.addTitle(
+        {
+          name: "Succession",
+          type: "tv",
+          status: "Completed",
+        },
+        [
+          {
+            seasonNumber: 4,
+            episodeNumber: 10,
+            name: "With Open Eyes",
+            isWatched: true,
+          },
+        ]
+      );
+
+      const episodes = await store.getEpisodes(title.id);
+      await store.toggleEpisodeWatched(episodes[0].id, false);
+
+      const fetched = await store.getTitle(title.id);
+      expect(fetched?.status).toBe("Watching");
+      expect(fetched?.watchedEpisodes).toBe(0);
+    });
   });
 
   describe("getActiveWatchingShows", () => {
@@ -551,6 +576,29 @@ describe("TrackerStore", () => {
 
       const activeShows = await store.getActiveWatchingShows();
       expect(activeShows).toEqual([]);
+    });
+
+    it("getActiveWatchingTitles is an alias for getActiveWatchingShows", async () => {
+      await store.addTitle(
+        {
+          name: "Alias Show",
+          type: "tv",
+          status: "Watching",
+          totalEpisodes: 2,
+        },
+        [
+          {
+            seasonNumber: 1,
+            episodeNumber: 1,
+            name: "Ep 1",
+            isWatched: false,
+          },
+        ]
+      );
+
+      const fromShows = await store.getActiveWatchingShows();
+      const fromTitles = await store.getActiveWatchingTitles();
+      expect(fromTitles).toEqual(fromShows);
     });
   });
 
@@ -864,6 +912,46 @@ describe("TrackerStore", () => {
       expect(fetched?.episodeSummary.nextEpisode?.episodeNumber).toBe(1);
     });
 
+    it("automatically transitions title status to 'Completed' when all episodes across all seasons are watched", async () => {
+      const title = await store.addTitle(
+        {
+          name: "Severance",
+          type: "tv",
+          status: "Watching",
+        },
+        [
+          { seasonNumber: 1, episodeNumber: 1, name: "Ep 1", isWatched: true },
+          { seasonNumber: 1, episodeNumber: 2, name: "Ep 2", isWatched: false },
+        ]
+      );
+
+      await store.markSeasonWatched(title.id, 1, true);
+
+      const fetched = await store.getTitle(title.id);
+      expect(fetched?.status).toBe("Completed");
+      expect(fetched?.watchedEpisodes).toBe(2);
+    });
+
+    it("automatically reverts title status to 'Watching' when marking a season as unwatched on a 'Completed' title", async () => {
+      const title = await store.addTitle(
+        {
+          name: "Severance",
+          type: "tv",
+          status: "Completed",
+        },
+        [
+          { seasonNumber: 1, episodeNumber: 1, name: "Ep 1", isWatched: true },
+          { seasonNumber: 1, episodeNumber: 2, name: "Ep 2", isWatched: true },
+        ]
+      );
+
+      await store.markSeasonWatched(title.id, 1, false);
+
+      const fetched = await store.getTitle(title.id);
+      expect(fetched?.status).toBe("Watching");
+      expect(fetched?.watchedEpisodes).toBe(0);
+    });
+
     it("returns empty array for non-existent title or season without episodes", async () => {
       const resNonExistentTitle = await store.markSeasonWatched("invalid-id", 1);
       expect(resNonExistentTitle).toEqual([]);
@@ -874,6 +962,52 @@ describe("TrackerStore", () => {
       });
       const resNonExistentSeason = await store.markSeasonWatched(title.id, 99);
       expect(resNonExistentSeason).toEqual([]);
+    });
+  });
+
+  describe("importEpisodesForTitle", () => {
+    it("imports episodes and updates totalEpisodes, watchedEpisodes, and timestamps", async () => {
+      const title = await store.addTitle({
+        name: "Slow Horses",
+        type: "tv",
+        status: "Plan to Watch",
+        totalEpisodes: 0,
+      });
+
+      const imported = await store.importEpisodesForTitle(title.id, [
+        {
+          seasonNumber: 1,
+          episodeNumber: 1,
+          name: "Failure's Contagious",
+          isWatched: true,
+        },
+        {
+          seasonNumber: 1,
+          episodeNumber: 2,
+          name: "Work Drinks",
+          isWatched: false,
+        },
+      ]);
+
+      expect(imported).toHaveLength(2);
+      expect(imported[0].titleId).toBe(title.id);
+
+      const fetched = await store.getTitle(title.id);
+      expect(fetched?.totalEpisodes).toBe(2);
+      expect(fetched?.watchedEpisodes).toBe(1);
+      expect(fetched?.episodes).toHaveLength(2);
+    });
+
+    it("throws error when importing episodes for a non-existent title", async () => {
+      await expect(
+        store.importEpisodesForTitle("non-existent-id", [
+          {
+            seasonNumber: 1,
+            episodeNumber: 1,
+            name: "Pilot",
+          },
+        ])
+      ).rejects.toThrow(/not found/i);
     });
   });
 });

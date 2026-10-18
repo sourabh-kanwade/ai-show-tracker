@@ -97,6 +97,14 @@ describe("ShowCard Component", () => {
     expect(button).not.toBeDisabled();
   });
 
+  it("renders quick increment button with accessible aria-label matching GLOSSARY standards", () => {
+    render(<ShowCard title={mockTitle} nextEpisode={mockNextEpisode} />);
+    const button = screen.getByRole("button", {
+      name: `Quick Increment (+1 Episode) for ${mockTitle.name}`,
+    });
+    expect(button).toBeInTheDocument();
+  });
+
   it("disables '+1 Episode' button when no next episode is available", () => {
     const caughtUpTitle: Title = {
       ...mockTitle,

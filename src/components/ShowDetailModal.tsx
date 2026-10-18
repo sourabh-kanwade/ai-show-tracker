@@ -12,9 +12,12 @@ import {
   XCircle,
   Clock,
   Check,
+  Trash2,
 } from "lucide-react";
 import type { Title, WatchStatus, EpisodeRecord, TitleWithEpisodes } from "../lib/types";
 import { TrackerStore, trackerStore as defaultStore, findNextEpisode } from "../lib/store";
+import { formatEpisodeBadge } from "./ShowCard";
+import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 
 export interface ShowDetailModalProps {
   isOpen: boolean;
@@ -26,6 +29,7 @@ export interface ShowDetailModalProps {
   onStatusChange?: (status: WatchStatus) => void;
   onRatingChange?: (rating: number | null) => void;
   onNotesChange?: (notes: string) => void;
+  onTitleDeleted?: (titleId: string) => void;
 }
 
 const WATCH_STATUSES: { value: WatchStatus; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -45,6 +49,7 @@ export function ShowDetailModal({
   onStatusChange,
   onRatingChange,
   onNotesChange,
+  onTitleDeleted,
 }: ShowDetailModalProps) {
   const effectiveTitleId = titleId ?? title?.id ?? null;
 
@@ -73,6 +78,10 @@ export function ShowDetailModal({
 
   // Selected season state
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
+
+  // Delete modal state
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Local state for notes & autosave
   const [notes, setNotes] = useState(currentTitle?.notes ?? "");
@@ -201,6 +210,21 @@ export function ShowDetailModal({
     }
   };
 
+  const handleDeleteTitle = async () => {
+    if (!currentTitle) return;
+    setIsDeleting(true);
+    try {
+      await store.deleteTitle(currentTitle.id);
+      setIsConfirmDeleteOpen(false);
+      onTitleDeleted?.(currentTitle.id);
+      onClose();
+    } catch (err) {
+      console.error("Failed to delete title:", err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   if (!isOpen || !currentTitle) {
     return null;
   }
@@ -235,9 +259,7 @@ export function ShowDetailModal({
       : 0;
 
   const nextEpisode = findNextEpisode(episodes);
-  const nextEpisodeBadge = nextEpisode
-    ? `S${String(nextEpisode.seasonNumber).padStart(2, "0")}E${String(nextEpisode.episodeNumber).padStart(2, "0")}`
-    : null;
+  const nextEpisodeBadge = formatEpisodeBadge(nextEpisode);
 
   return (
     <div
@@ -657,13 +679,37 @@ export function ShowDetailModal({
               value={notes}
               onChange={handleNotesChange}
               onBlur={handleNotesBlur}
-              placeholder="Add your thoughts, review, or private notes here..."
+              placeholder="Add your thoughts or private notes here..."
               rows={4}
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-700/80 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition resize-y leading-relaxed"
             />
           </section>
+
+          {/* Danger Zone / Delete Title */}
+          <section className="pt-4 border-t border-slate-800/80 flex items-center justify-between">
+            <span className="text-xs text-slate-500">
+              Manage this title in your library
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsConfirmDeleteOpen(true)}
+              aria-label="Delete Title"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/30 transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Title</span>
+            </button>
+          </section>
         </div>
       </div>
+
+      <ConfirmDeleteModal
+        isOpen={isConfirmDeleteOpen}
+        titleName={currentTitle.name}
+        onConfirm={handleDeleteTitle}
+        onCancel={() => setIsConfirmDeleteOpen(false)}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 }

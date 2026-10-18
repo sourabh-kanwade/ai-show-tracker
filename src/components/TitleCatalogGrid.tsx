@@ -64,21 +64,7 @@ export function TitleCatalogGrid({
             const eps = details.episodes.map((ep) =>
               toCreateEpisodeInput(ep, title.id)
             );
-            const prepared = eps.map((ep) => ({
-              id: ep.id ?? crypto.randomUUID(),
-              titleId: title.id,
-              seasonNumber: ep.seasonNumber,
-              episodeNumber: ep.episodeNumber,
-              name: ep.name,
-              airDate: ep.airDate ?? null,
-              overview: ep.overview ?? "",
-              isWatched: ep.isWatched ?? false,
-              watchedAt: null,
-            }));
-            await store.db.episodes.bulkAdd(prepared);
-            await store.db.titles.update(title.id, {
-              totalEpisodes: prepared.length,
-            });
+            await store.importEpisodesForTitle(title.id, eps);
           } catch {
             // Non-critical fallback if offline or API unreachable
           }
