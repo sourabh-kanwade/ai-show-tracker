@@ -453,6 +453,39 @@ describe("TrackerStore", () => {
       expect(titleAfter?.episodeSummary?.nextEpisode?.id).toBe(ep1.id);
     });
 
+    it("automatically updates title status to 'Completed' when toggling the final remaining unwatched episode to watched", async () => {
+      const title = await store.addTitle(
+        {
+          name: "Succession",
+          type: "tv",
+          status: "Watching",
+        },
+        [
+          {
+            seasonNumber: 4,
+            episodeNumber: 9,
+            name: "Church and State",
+            isWatched: true,
+          },
+          {
+            seasonNumber: 4,
+            episodeNumber: 10,
+            name: "With Open Eyes",
+            isWatched: false,
+          },
+        ]
+      );
+
+      const episodes = await store.getEpisodes(title.id);
+      const finale = episodes.find((e) => e.episodeNumber === 10)!;
+
+      await store.toggleEpisodeWatched(finale.id, true);
+
+      const fetched = await store.getTitle(title.id);
+      expect(fetched?.status).toBe("Completed");
+      expect(fetched?.watchedEpisodes).toBe(2);
+    });
+
     it("returns null when toggling non-existent episode", async () => {
       const result = await store.toggleEpisodeWatched("missing-ep-id", true);
       expect(result).toBeNull();
@@ -671,6 +704,91 @@ describe("TrackerStore", () => {
       // Capped at totalEpisodes
       const resCapped = await store.quickIncrement(movie.id);
       expect(resCapped?.title.watchedEpisodes).toBe(1);
+    });
+
+    it("automatically updates title status to 'Completed' and returns isCompleted: true when series finale is watched", async () => {
+      const title = await store.addTitle(
+        {
+          name: "Better Call Saul",
+          type: "tv",
+          status: "Watching",
+        },
+        [
+          {
+            seasonNumber: 6,
+            episodeNumber: 12,
+            name: "Waterworks",
+            isWatched: true,
+          },
+          {
+            seasonNumber: 6,
+            episodeNumber: 13,
+            name: "Saul Gone",
+            isWatched: false,
+          },
+        ]
+      );
+
+      const res = await store.quickIncrement(title.id);
+      expect(res).not.toBeNull();
+      expect(res?.isCompleted).toBe(true);
+      expect(res?.title.status).toBe("Completed");
+      expect(res?.title.watchedEpisodes).toBe(2);
+      expect(res?.watchedEpisode?.name).toBe("Saul Gone");
+      expect(res?.nextEpisode).toBeNull();
+
+      // Check persisted state in DB
+      const fetched = await store.getTitle(title.id);
+      expect(fetched?.status).toBe("Completed");
+      expect(fetched?.watchedEpisodes).toBe(2);
+    });
+
+    it("keeps status as 'Watching' and returns isCompleted: false when an intermediate episode is watched", async () => {
+      const title = await store.addTitle(
+        {
+          name: "Breaking Bad",
+          type: "tv",
+          status: "Watching",
+        },
+        [
+          {
+            seasonNumber: 1,
+            episodeNumber: 1,
+            name: "Pilot",
+            isWatched: false,
+          },
+          {
+            seasonNumber: 1,
+            episodeNumber: 2,
+            name: "Cat's in the Bag...",
+            isWatched: false,
+          },
+        ]
+      );
+
+      const res = await store.quickIncrement(title.id);
+      expect(res?.isCompleted).toBe(false);
+      expect(res?.title.status).toBe("Watching");
+
+      const fetched = await store.getTitle(title.id);
+      expect(fetched?.status).toBe("Watching");
+    });
+
+    it("automatically completes movie when watchedEpisodes reaches totalEpisodes", async () => {
+      const movie = await store.addTitle({
+        name: "Oppenheimer",
+        type: "movie",
+        status: "Watching",
+        totalEpisodes: 1,
+        watchedEpisodes: 0,
+      });
+
+      const res = await store.quickIncrement(movie.id);
+      expect(res?.isCompleted).toBe(true);
+      expect(res?.title.status).toBe("Completed");
+
+      const fetched = await store.getTitle(movie.id);
+      expect(fetched?.status).toBe("Completed");
     });
 
     it("returns null for non-existent titleId", async () => {

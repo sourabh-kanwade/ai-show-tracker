@@ -211,11 +211,23 @@ export class TrackerStore {
         .equals(episode.titleId)
         .toArray();
       const watchedEpisodes = episodes.filter((e) => e.isWatched).length;
+      const title = await this.db.titles.get(episode.titleId);
 
-      await this.db.titles.update(episode.titleId, {
+      const isCompleted =
+        isWatched &&
+        title !== undefined &&
+        ((episodes.length > 0 && episodes.every((e) => e.isWatched)) ||
+          (title.totalEpisodes > 0 && watchedEpisodes >= title.totalEpisodes));
+
+      const updates: Partial<Title> = {
         watchedEpisodes,
         updatedAt: now,
-      });
+      };
+      if (isCompleted) {
+        updates.status = "Completed";
+      }
+
+      await this.db.titles.update(episode.titleId, updates);
     });
 
     return updatedEpisode;
@@ -257,8 +269,11 @@ export class TrackerStore {
     if (episodes.length === 0) {
       if (title.totalEpisodes > 0 && title.watchedEpisodes < title.totalEpisodes) {
         const watchedEpisodes = title.watchedEpisodes + 1;
+        const isCompleted = watchedEpisodes >= title.totalEpisodes;
+        const nextStatus = isCompleted ? "Completed" : title.status;
         await this.db.titles.update(titleId, {
           watchedEpisodes,
+          status: nextStatus,
           updatedAt: now,
         });
         const updatedTitle = (await this.db.titles.get(titleId))!;
@@ -266,12 +281,14 @@ export class TrackerStore {
           title: updatedTitle,
           watchedEpisode: null,
           nextEpisode: null,
+          isCompleted,
         };
       }
       return {
         title,
         watchedEpisode: null,
         nextEpisode: null,
+        isCompleted: false,
       };
     }
 
@@ -282,11 +299,13 @@ export class TrackerStore {
         title,
         watchedEpisode: null,
         nextEpisode: null,
+        isCompleted: false,
       };
     }
 
     let updatedWatchedEpisode: EpisodeRecord | null = null;
     let updatedTitle: Title = title;
+    let isCompleted = false;
 
     await this.db.transaction("rw", this.db.titles, this.db.episodes, async () => {
       await this.db.episodes.update(targetEpisode.id, {
@@ -302,8 +321,15 @@ export class TrackerStore {
         .toArray();
       const watchedEpisodes = allEpisodes.filter((e) => e.isWatched).length;
 
+      isCompleted =
+        (allEpisodes.length > 0 && allEpisodes.every((e) => e.isWatched)) ||
+        (title.totalEpisodes > 0 && watchedEpisodes >= title.totalEpisodes);
+
+      const nextStatus = isCompleted ? "Completed" : title.status;
+
       await this.db.titles.update(titleId, {
         watchedEpisodes,
+        status: nextStatus,
         updatedAt: now,
       });
 
@@ -317,6 +343,7 @@ export class TrackerStore {
       title: updatedTitle,
       watchedEpisode: updatedWatchedEpisode,
       nextEpisode,
+      isCompleted,
     };
   }
 }
