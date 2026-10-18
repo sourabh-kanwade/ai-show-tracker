@@ -48,4 +48,58 @@ describe("Show Tracker App Shell (Smoke Test)", () => {
       expect(screen.getByText(/no shows currently being watched/i)).toBeInTheDocument();
     });
   });
+
+  it("opens ShowDetailModal when clicking a show card on the dashboard", async () => {
+    const { ShowTrackerDB, TrackerStore } = await import("../lib/store");
+    const db = new ShowTrackerDB(`test-page-db-${Math.random().toString(36).substring(2, 9)}`);
+    const store = new TrackerStore(db);
+
+    await store.addTitle({
+      name: "The White Lotus",
+      type: "tv",
+      overview: "A sharp social satire following the exploits of various employees and guests at an exclusive Hawaiian resort.",
+      posterUrl: "https://example.com/white-lotus.jpg",
+      status: "Watching",
+      totalEpisodes: 6,
+      watchedEpisodes: 2,
+      rating: 9,
+      notes: "Incredible soundtrack and performances.",
+    });
+
+    const user = userEvent.setup();
+    render(<Page store={store} />);
+
+    // Wait for show card to appear in Currently Watching
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 3, name: "The White Lotus" })).toBeInTheDocument();
+    });
+
+    // Modal dialog is not open initially
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    // Click the show card
+    const card = screen.getByRole("heading", { level: 3, name: "The White Lotus" }).closest("article");
+    expect(card).toBeInTheDocument();
+    await user.click(card!);
+
+    // ShowDetailModal opens
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("heading", { level: 2, name: "The White Lotus" })).toBeInTheDocument();
+    expect(screen.getByText("9 / 10")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Incredible soundtrack and performances.")).toBeInTheDocument();
+
+    // Close the modal
+    const closeBtn = screen.getByRole("button", { name: /close/i });
+    await user.click(closeBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    await db.delete();
+  });
 });
+

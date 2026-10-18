@@ -5,9 +5,17 @@ import { Tv, Bookmark, CheckCircle2, XCircle, Settings } from "lucide-react";
 import { SearchBar } from "../components/SearchBar";
 import { SettingsModal } from "../components/SettingsModal";
 import { CurrentlyWatchingGrid } from "../components/CurrentlyWatchingGrid";
+import { ShowDetailModal } from "../components/ShowDetailModal";
+import { TrackerStore, trackerStore as defaultStore } from "../lib/store";
+import type { Title } from "../lib/types";
 
-export default function Home() {
+export interface HomePageProps {
+  store?: TrackerStore;
+}
+
+export default function Home({ store = defaultStore }: HomePageProps = {}) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [selectedTitle, setSelectedTitle] = useState<Title | null>(null);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
@@ -23,7 +31,7 @@ export default function Home() {
           </div>
 
           <div className="flex items-center space-x-3 flex-1 justify-end max-w-md">
-            <SearchBar />
+            <SearchBar store={store} />
             <button
               type="button"
               aria-label="Settings"
@@ -79,7 +87,10 @@ export default function Home() {
 
           <section aria-label="Currently Watching">
             <h2 className="sr-only">Currently Watching</h2>
-            <CurrentlyWatchingGrid />
+            <CurrentlyWatchingGrid
+              store={store}
+              onSelectTitle={(title) => setSelectedTitle(title)}
+            />
           </section>
         </div>
       </main>
@@ -87,6 +98,14 @@ export default function Home() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        store={store}
+      />
+
+      <ShowDetailModal
+        isOpen={!!selectedTitle}
+        title={selectedTitle}
+        onClose={() => setSelectedTitle(null)}
+        store={store}
       />
     </div>
   );
