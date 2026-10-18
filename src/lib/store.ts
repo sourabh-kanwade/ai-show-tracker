@@ -7,6 +7,7 @@ import type {
   TitleWithEpisodes,
   WatchingTitleProgress,
   ActiveShowItem,
+  QuickIncrementResult,
   CreateTitleInput,
   CreateEpisodeInput,
 } from "./types";
@@ -242,6 +243,81 @@ export class TrackerStore {
     );
 
     return activeShows;
+  }
+
+  async quickIncrement(titleId: string): Promise<QuickIncrementResult | null> {
+    const title = await this.db.titles.get(titleId);
+    if (!title) {
+      return null;
+    }
+
+    const episodes = await this.getEpisodes(titleId);
+    const now = new Date().toISOString();
+
+    if (episodes.length === 0) {
+      if (title.totalEpisodes > 0 && title.watchedEpisodes < title.totalEpisodes) {
+        const watchedEpisodes = title.watchedEpisodes + 1;
+        await this.db.titles.update(titleId, {
+          watchedEpisodes,
+          updatedAt: now,
+        });
+        const updatedTitle = (await this.db.titles.get(titleId))!;
+        return {
+          title: updatedTitle,
+          watchedEpisode: null,
+          nextEpisode: null,
+        };
+      }
+      return {
+        title,
+        watchedEpisode: null,
+        nextEpisode: null,
+      };
+    }
+
+    // Episodes are already sorted sequentially by seasonNumber, then episodeNumber in getEpisodes
+    const targetEpisode = episodes.find((e) => !e.isWatched);
+    if (!targetEpisode) {
+      return {
+        title,
+        watchedEpisode: null,
+        nextEpisode: null,
+      };
+    }
+
+    let updatedWatchedEpisode: EpisodeRecord | null = null;
+    let updatedTitle: Title = title;
+
+    await this.db.transaction("rw", this.db.titles, this.db.episodes, async () => {
+      await this.db.episodes.update(targetEpisode.id, {
+        isWatched: true,
+        watchedAt: now,
+      });
+
+      updatedWatchedEpisode = (await this.db.episodes.get(targetEpisode.id)) ?? null;
+
+      const allEpisodes = await this.db.episodes
+        .where("titleId")
+        .equals(titleId)
+        .toArray();
+      const watchedEpisodes = allEpisodes.filter((e) => e.isWatched).length;
+
+      await this.db.titles.update(titleId, {
+        watchedEpisodes,
+        updatedAt: now,
+      });
+
+      updatedTitle = (await this.db.titles.get(titleId))!;
+    });
+
+    const nextEpisode =
+      episodes.find((e) => e.id !== targetEpisode.id && !e.isWatched) ?? null;
+
+    return {
+      title: updatedTitle,
+      watchedEpisode: updatedWatchedEpisode,
+      nextEpisode,
+    };
   }
 }
 

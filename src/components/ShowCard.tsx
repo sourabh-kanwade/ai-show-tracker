@@ -1,13 +1,14 @@
 "use client";
 
 import React from "react";
-import { Tv } from "lucide-react";
+import { Tv, Plus } from "lucide-react";
 import type { Title, EpisodeRecord } from "../lib/types";
 
 export interface ShowCardProps {
   title: Title;
   nextEpisode?: EpisodeRecord | null;
   onSelect?: (title: Title) => void;
+  onQuickIncrement?: (title: Title) => void;
 }
 
 export function formatEpisodeBadge(episode: EpisodeRecord | null | undefined): string | null {
@@ -17,11 +18,15 @@ export function formatEpisodeBadge(episode: EpisodeRecord | null | undefined): s
   return `S${s}E${e}`;
 }
 
-export function ShowCard({ title, nextEpisode, onSelect }: ShowCardProps) {
+export function ShowCard({ title, nextEpisode, onSelect, onQuickIncrement }: ShowCardProps) {
   const total = title.totalEpisodes || 0;
   const watched = title.watchedEpisodes || 0;
   const percentage = total > 0 ? Math.min(100, Math.round((watched / total) * 100)) : 0;
   const episodeBadge = formatEpisodeBadge(nextEpisode);
+  const hasNextEpisode =
+    nextEpisode !== undefined
+      ? Boolean(nextEpisode)
+      : total > 0 && watched < total;
 
   return (
     <article
@@ -83,10 +88,30 @@ export function ShowCard({ title, nextEpisode, onSelect }: ShowCardProps) {
             ) : null}
           </div>
 
-          {/* Progress Bar & Counter */}
-          <div className="space-y-1.5 mt-auto pt-2">
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>
+          {/* Quick Increment Action & Progress */}
+          <div className="space-y-2 mt-auto pt-2">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                data-testid={`quick-increment-${title.id}`}
+                disabled={!hasNextEpisode}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (hasNextEpisode && onQuickIncrement) {
+                    onQuickIncrement(title);
+                  }
+                }}
+                aria-label={`+1 Episode for ${title.name}`}
+                className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                  hasNextEpisode
+                    ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm hover:shadow cursor-pointer active:scale-95"
+                    : "bg-slate-800 text-slate-500 cursor-not-allowed opacity-50"
+                }`}
+              >
+                <Plus className="w-3.5 h-3.5 mr-1 inline-block" />
+                +1 Episode
+              </button>
+              <span className="text-xs text-slate-400 shrink-0">
                 {watched} / {total} eps ({percentage}%)
               </span>
             </div>

@@ -136,4 +136,138 @@ describe("CurrentlyWatchingGrid Component", () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: created.id, name: "The Bear" }));
   });
+
+  it("calls store.quickIncrement and reactively advances episode badge and progress when '+1 Episode' is clicked", async () => {
+    const user = userEvent.setup();
+
+    const created = await store.addTitle(
+      {
+        name: "Severance",
+        type: "tv",
+        status: "Watching",
+      },
+      [
+        {
+          seasonNumber: 1,
+          episodeNumber: 1,
+          name: "Good News About Hell",
+          isWatched: false,
+        },
+        {
+          seasonNumber: 1,
+          episodeNumber: 2,
+          name: "Half Loop",
+          isWatched: false,
+        },
+      ]
+    );
+
+    render(<CurrentlyWatchingGrid store={store} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 3, name: "Severance" })).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("S01E01")).toBeInTheDocument();
+    expect(screen.getByText(/0 \/ 2 eps \(0%\)/i)).toBeInTheDocument();
+
+    const incrementBtn = screen.getByRole("button", { name: /\+1 Episode/i });
+    await user.click(incrementBtn);
+
+    // Reactively updates to S01E02 and 1 / 2 eps (50%)
+    await waitFor(() => {
+      expect(screen.getByText("S01E02")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/1 \/ 2 eps \(50%\)/i)).toBeInTheDocument();
+
+    // Verify DB update
+    const fetched = await store.getTitle(created.id);
+    expect(fetched?.watchedEpisodes).toBe(1);
+    expect(fetched?.episodes[0].isWatched).toBe(true);
+  });
+
+  it("handles season rollover when '+1 Episode' is clicked on a season finale", async () => {
+    const user = userEvent.setup();
+
+    await store.addTitle(
+      {
+        name: "Succession",
+        type: "tv",
+        status: "Watching",
+      },
+      [
+        {
+          seasonNumber: 1,
+          episodeNumber: 10,
+          name: "Nobody Is Ever Missing",
+          isWatched: false,
+        },
+        {
+          seasonNumber: 2,
+          episodeNumber: 1,
+          name: "The Summer Palace",
+          isWatched: false,
+        },
+      ]
+    );
+
+    render(<CurrentlyWatchingGrid store={store} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 3, name: "Succession" })).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("S01E10")).toBeInTheDocument();
+
+    const incrementBtn = screen.getByRole("button", { name: /\+1 Episode/i });
+    await user.click(incrementBtn);
+
+    // Rolls over to S02E01 reactively
+    await waitFor(() => {
+      expect(screen.getByText("S02E01")).toBeInTheDocument();
+    });
+    expect(screen.getByText("The Summer Palace")).toBeInTheDocument();
+  });
+
+  it("triggers optional onQuickIncrement callback prop when '+1 Episode' is clicked", async () => {
+    const user = userEvent.setup();
+    const onQuickIncrement = vi.fn();
+
+    const created = await store.addTitle(
+      {
+        name: "Slow Horses",
+        type: "tv",
+        status: "Watching",
+      },
+      [
+        {
+          seasonNumber: 1,
+          episodeNumber: 1,
+          name: "Failure's Contagious",
+          isWatched: false,
+        },
+      ]
+    );
+
+    render(
+      <CurrentlyWatchingGrid
+        store={store}
+        onQuickIncrement={onQuickIncrement}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 3, name: "Slow Horses" })).toBeInTheDocument();
+    });
+
+    const incrementBtn = screen.getByRole("button", { name: /\+1 Episode/i });
+    await user.click(incrementBtn);
+
+    await waitFor(() => {
+      expect(onQuickIncrement).toHaveBeenCalledTimes(1);
+    });
+    expect(onQuickIncrement).toHaveBeenCalledWith(
+      expect.objectContaining({ id: created.id, name: "Slow Horses" })
+    );
+  });
 });
