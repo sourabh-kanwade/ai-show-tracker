@@ -399,6 +399,193 @@ describe('TVMaze API Client', () => {
     });
   });
 
+  describe('isFutureAirDate helper', () => {
+    it('identifies future dates correctly relative to reference date', async () => {
+      const { isFutureAirDate } = await import('./tvmaze');
+      const refDate = new Date('2026-10-18T12:00:00Z');
+
+      expect(isFutureAirDate('2026-10-19', refDate)).toBe(true);
+      expect(isFutureAirDate('2027-05-20', refDate)).toBe(true);
+      expect(isFutureAirDate('2026-10-18', refDate)).toBe(true); // Same day airs today
+    });
+
+    it('returns false for past dates, invalid strings, or null/undefined', async () => {
+      const { isFutureAirDate } = await import('./tvmaze');
+      const refDate = new Date('2026-10-18T12:00:00Z');
+
+      expect(isFutureAirDate('2026-10-17', refDate)).toBe(false);
+      expect(isFutureAirDate('2020-01-01', refDate)).toBe(false);
+      expect(isFutureAirDate(null, refDate)).toBe(false);
+      expect(isFutureAirDate(undefined, refDate)).toBe(false);
+      expect(isFutureAirDate('invalid-date', refDate)).toBe(false);
+      expect(isFutureAirDate('', refDate)).toBe(false);
+    });
+  });
+
+  describe('getNextAirDateFromSchedule helper', () => {
+    it('calculates the next upcoming air date based on scheduled day of week', async () => {
+      const { getNextAirDateFromSchedule } = await import('./tvmaze');
+      // 2026-10-18 is a Sunday (UTC)
+      const sundayRef = new Date('2026-10-18T12:00:00Z');
+
+      // Next Friday is 2026-10-23
+      const fridayDate = getNextAirDateFromSchedule(
+        { time: '20:00', days: ['Friday'] },
+        sundayRef
+      );
+      expect(fridayDate).toBe('2026-10-23');
+
+      // Scheduled Sunday with time later today (15:00 > 12:00)
+      const todaySunday = getNextAirDateFromSchedule(
+        { time: '15:00', days: ['Sunday'] },
+        sundayRef
+      );
+      expect(todaySunday).toBe('2026-10-18');
+
+      // Scheduled Sunday with time earlier today (09:00 < 12:00) rolls over to next week (2026-10-25)
+      const nextSunday = getNextAirDateFromSchedule(
+        { time: '09:00', days: ['Sunday'] },
+        sundayRef
+      );
+      expect(nextSunday).toBe('2026-10-25');
+    });
+
+    it('returns null when schedule is empty, days array is missing or empty', async () => {
+      const { getNextAirDateFromSchedule } = await import('./tvmaze');
+      expect(getNextAirDateFromSchedule(null)).toBeNull();
+      expect(getNextAirDateFromSchedule(undefined)).toBeNull();
+      expect(getNextAirDateFromSchedule({ days: [] })).toBeNull();
+      expect(getNextAirDateFromSchedule({ time: '20:00', days: [] })).toBeNull();
+    });
+  });
+
+  describe('Upcoming air date extraction in getShowWithEpisodes', () => {
+    it('extracts nextAirDate from _links.nextepisode when airdate is provided in the link', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 777,
+          name: 'The Diplomat',
+          status: 'Running',
+          _links: {
+            nextepisode: {
+              href: 'https://api.tvmaze.com/episodes/999111',
+              name: 'The Wire',
+              airdate: '2026-11-15',
+            },
+          },
+          _embedded: { episodes: [] },
+        }),
+      } as unknown as Response);
+
+      const show = await getShowWithEpisodes(777, mockFetch);
+      expect(show.nextAirDate).toBe('2026-11-15');
+      expect(show.nextEpisode).toEqual({
+        id: 999111,
+        name: 'The Wire',
+        airdate: '2026-11-15',
+        airtime: null,
+        airstamp: null,
+        season: null,
+        number: null,
+      });
+    });
+
+    it('extracts nextAirDate from embedded episode schedule when _links.nextepisode is absent but upcoming episode exists', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 888,
+          name: 'Silo',
+          status: 'Running',
+          _links: {},
+          _embedded: {
+            episodes: [
+              {
+                id: 1,
+                name: 'Old Ep',
+                season: 1,
+                number: 1,
+                airdate: '2023-05-05',
+                airtime: '00:00',
+                airstamp: '2023-05-05T00:00:00Z',
+              },
+              {
+                id: 2,
+                name: 'Future Ep',
+                season: 2,
+                number: 1,
+                airdate: '2027-01-15',
+                airtime: '00:00',
+                airstamp: '2027-01-15T00:00:00Z',
+              },
+            ],
+          },
+        }),
+      } as unknown as Response);
+
+      const show = await getShowWithEpisodes(888, mockFetch);
+      expect(show.nextAirDate).toBe('2027-01-15');
+      expect(show.nextEpisode?.name).toBe('Future Ep');
+    });
+
+    it('extracts nextAirDate from schedule when show is Running and no explicit upcoming episode is given', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 999,
+          name: 'Weekly Live Show',
+          status: 'Running',
+          schedule: { time: '21:00', days: ['Friday'] },
+          _links: {},
+          _embedded: { episodes: [] },
+        }),
+      } as unknown as Response);
+
+      const show = await getShowWithEpisodes(999, mockFetch);
+      expect(show.nextAirDate).not.toBeNull();
+      // Verifies format YYYY-MM-DD
+      expect(show.nextAirDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('ensures nextAirDate is null for shows with status Ended even if payload contains schedule or nextepisode link', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 111,
+          name: 'Finished Drama',
+          status: 'Ended',
+          schedule: { time: '22:00', days: ['Sunday'] },
+          _links: {
+            nextepisode: {
+              href: 'https://api.tvmaze.com/episodes/12345',
+              airdate: '2028-01-01',
+            },
+          },
+          _embedded: {
+            episodes: [
+              {
+                id: 12345,
+                season: 5,
+                number: 10,
+                airdate: '2028-01-01',
+              },
+            ],
+          },
+        }),
+      } as unknown as Response);
+
+      const show = await getShowWithEpisodes(111, mockFetch);
+      expect(show.status).toBe('Ended');
+      expect(show.nextAirDate).toBeNull();
+      expect(show.nextEpisode).toBeNull();
+    });
+  });
+
   describe('Storage adapter helpers', () => {
     it('toCreateTitleInput maps a TVMaze show or details object to CreateTitleInput', async () => {
       const { toCreateTitleInput } = await import('./tvmaze');
@@ -424,8 +611,25 @@ describe('TVMaze API Client', () => {
         genres: ['Drama', 'Mystery', 'Science-Fiction'],
         firstAirDate: '2022-02-18',
         nextAirDate: '2025-01-17',
+        airingStatus: 'Running',
         totalEpisodes: 3,
       });
+    });
+
+    it('toCreateTitleInput sets nextAirDate to null when show has status Ended', async () => {
+      const { toCreateTitleInput } = await import('./tvmaze');
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => MOCK_ENDED_SHOW_PAYLOAD,
+      } as unknown as Response);
+
+      const show = await getShowWithEpisodes(169, mockFetch);
+      const titleInput = toCreateTitleInput(show, 'Completed');
+
+      expect(titleInput.nextAirDate).toBeNull();
+      expect(titleInput.airingStatus).toBe('Ended');
     });
 
     it('toCreateEpisodeInput maps a TVMaze episode to CreateEpisodeInput', async () => {
@@ -451,3 +655,4 @@ describe('TVMaze API Client', () => {
     });
   });
 });
+

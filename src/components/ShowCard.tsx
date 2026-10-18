@@ -3,12 +3,14 @@
 import React from "react";
 import { Tv, Plus } from "lucide-react";
 import type { Title, EpisodeRecord } from "../lib/types";
+import { formatAirDate, isFutureAirDate } from "../lib/tvmaze";
 
 export interface ShowCardProps {
   title: Title;
   nextEpisode?: EpisodeRecord | null;
   onSelect?: (title: Title) => void;
   onQuickIncrement?: (title: Title) => void;
+  referenceDate?: Date;
 }
 
 export function formatEpisodeBadge(episode: EpisodeRecord | null | undefined): string | null {
@@ -18,7 +20,28 @@ export function formatEpisodeBadge(episode: EpisodeRecord | null | undefined): s
   return `S${s}E${e}`;
 }
 
-export function ShowCard({ title, nextEpisode, onSelect, onQuickIncrement }: ShowCardProps) {
+export function hasUpcomingAirDate(
+  title: Title,
+  referenceDate: Date = new Date()
+): boolean {
+  if (!title.nextAirDate) return false;
+
+  const isEnded =
+    title.airingStatus?.toLowerCase() === "ended" ||
+    (title as any).status?.toLowerCase?.() === "ended";
+
+  if (isEnded) return false;
+
+  return isFutureAirDate(title.nextAirDate, referenceDate);
+}
+
+export function ShowCard({
+  title,
+  nextEpisode,
+  onSelect,
+  onQuickIncrement,
+  referenceDate,
+}: ShowCardProps) {
   const total = title.totalEpisodes || 0;
   const watched = title.watchedEpisodes || 0;
   const percentage = total > 0 ? Math.min(100, Math.round((watched / total) * 100)) : 0;
@@ -27,6 +50,10 @@ export function ShowCard({ title, nextEpisode, onSelect, onQuickIncrement }: Sho
     nextEpisode !== undefined
       ? Boolean(nextEpisode)
       : total > 0 && watched < total;
+  const showUpcoming = hasUpcomingAirDate(title, referenceDate);
+  const formattedNextAirDate = showUpcoming
+    ? (formatAirDate(title.nextAirDate) ?? title.nextAirDate)
+    : null;
 
   return (
     <article
@@ -86,6 +113,18 @@ export function ShowCard({ title, nextEpisode, onSelect, onQuickIncrement }: Sho
                 </span>
               </div>
             ) : null}
+
+            {/* Upcoming Next Episode Air Date Badge */}
+            {showUpcoming && formattedNextAirDate && (
+              <div className="mb-2">
+                <span
+                  data-testid="upcoming-air-date-badge"
+                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-950/80 text-amber-300 border border-amber-700/60 shadow-sm"
+                >
+                  Next Ep: {formattedNextAirDate}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Quick Increment Action & Progress */}

@@ -61,6 +61,7 @@ export class TrackerStore {
       genres: titleInput.genres ?? [],
       firstAirDate: titleInput.firstAirDate ?? null,
       nextAirDate: titleInput.nextAirDate ?? null,
+      airingStatus: titleInput.airingStatus ?? null,
       totalEpisodes: titleInput.totalEpisodes ?? totalCount,
       watchedEpisodes:
         titleInput.watchedEpisodes ??

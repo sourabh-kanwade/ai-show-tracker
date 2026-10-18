@@ -89,7 +89,8 @@ export function stripHtml(html: string | null | undefined): string {
 export function formatAirDate(dateStr: string | null | undefined): string | null {
   if (!dateStr || typeof dateStr !== 'string') return null;
 
-  const parts = dateStr.split('-');
+  const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+  const parts = cleanDate.split('-');
   if (parts.length !== 3) return null;
 
   const [yearStr, monthStr, dayStr] = parts;
@@ -108,6 +109,120 @@ export function formatAirDate(dateStr: string | null | undefined): string | null
     year: 'numeric',
     timeZone: 'UTC',
   }).format(date);
+}
+
+/**
+ * Checks if a date string represents today or a future date relative to a reference date.
+ * Compares at UTC day granularity.
+ */
+export function isFutureAirDate(
+  dateStr: string | null | undefined,
+  referenceDate: Date = new Date()
+): boolean {
+  if (!dateStr || typeof dateStr !== 'string') return false;
+
+  const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+  const parts = cleanDate.split('-');
+  if (parts.length !== 3) return false;
+
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return false;
+
+  const targetDate = new Date(Date.UTC(year, month - 1, day));
+  if (isNaN(targetDate.getTime())) return false;
+
+  const refDayStart = new Date(
+    Date.UTC(
+      referenceDate.getUTCFullYear(),
+      referenceDate.getUTCMonth(),
+      referenceDate.getUTCDate()
+    )
+  );
+
+  return targetDate.getTime() >= refDayStart.getTime();
+}
+
+export interface TVMazeSchedule {
+  time?: string;
+  days?: string[];
+}
+
+export type RawTVMazeSchedule = TVMazeSchedule;
+
+/**
+ * Computes the next upcoming ISO date (YYYY-MM-DD) based on a show's scheduled broadcast days.
+ */
+export function getNextAirDateFromSchedule(
+  schedule?: TVMazeSchedule | null,
+  referenceDate: Date = new Date()
+): string | null {
+  if (!schedule || !Array.isArray(schedule.days) || schedule.days.length === 0) {
+    return null;
+  }
+
+  const DAY_INDEX_MAP: Record<string, number> = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+  };
+
+  const scheduledDayIndexes = schedule.days
+    .map((day) => (typeof day === 'string' ? DAY_INDEX_MAP[day.trim().toLowerCase()] : undefined))
+    .filter((idx): idx is number => idx !== undefined);
+
+  if (scheduledDayIndexes.length === 0) {
+    return null;
+  }
+
+  const currentDayOfWeek = referenceDate.getUTCDay();
+
+  let bestOffset = 8;
+  for (const dayIdx of scheduledDayIndexes) {
+    let offset = (dayIdx - currentDayOfWeek + 7) % 7;
+    if (offset === 0) {
+      if (schedule.time) {
+        const [hourStr, minStr] = schedule.time.split(':');
+        const hour = parseInt(hourStr, 10);
+        const min = parseInt(minStr, 10);
+        const currentHour = referenceDate.getUTCHours();
+        const currentMin = referenceDate.getUTCMinutes();
+        if (
+          !isNaN(hour) &&
+          (hour < currentHour || (hour === currentHour && (!isNaN(min) ? min <= currentMin : true)))
+        ) {
+          offset = 7;
+        }
+      }
+    }
+    if (offset < bestOffset) {
+      bestOffset = offset;
+    }
+  }
+
+  if (bestOffset > 7) {
+    return null;
+  }
+
+  const nextDate = new Date(
+    Date.UTC(
+      referenceDate.getUTCFullYear(),
+      referenceDate.getUTCMonth(),
+      referenceDate.getUTCDate() + bestOffset
+    )
+  );
+
+  const y = nextDate.getUTCFullYear();
+  const m = String(nextDate.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(nextDate.getUTCDate()).padStart(2, '0');
+
+  return `${y}-${m}-${d}`;
 }
 
 export interface RawTVMazeImage {
@@ -164,6 +279,7 @@ export interface RawTVMazeShow {
   premiered?: string | null;
   ended?: string | null;
   officialSite?: string | null;
+  schedule?: RawTVMazeSchedule;
   rating?: { average?: number | null } | null;
   network?: RawTVMazeNetwork | null;
   webChannel?: RawTVMazeWebChannel | null;
@@ -218,6 +334,15 @@ function normalizeShow(raw: RawTVMazeShow): TVMazeSearchResult {
   const image = normalizeImage(raw.image);
   const networkName = raw.network?.name ?? null;
   const webChannelName = raw.webChannel?.name ?? null;
+  const isEnded = raw.status === 'Ended';
+
+  let nextAirDate: string | null = null;
+  if (!isEnded) {
+    nextAirDate = raw.nextAirDate ?? raw._links?.nextepisode?.airdate ?? null;
+    if (!nextAirDate && raw.schedule) {
+      nextAirDate = getNextAirDateFromSchedule(raw.schedule);
+    }
+  }
 
   return {
     id: raw.id,
@@ -233,7 +358,7 @@ function normalizeShow(raw: RawTVMazeShow): TVMazeSearchResult {
     webChannel: webChannelName,
     networkOrWebChannel: networkName ?? webChannelName ?? null,
     rating: typeof raw.rating?.average === 'number' ? raw.rating.average : null,
-    nextAirDate: raw.nextAirDate ?? raw._links?.nextepisode?.airdate ?? null,
+    nextAirDate,
     nextEpisodeHref: raw._links?.nextepisode?.href ?? null,
   };
 }
@@ -303,37 +428,66 @@ export async function getShowWithEpisodes(
   const seasonsCount = seasonsSet.size;
 
   // Resolve next episode & next air date
+  const isEnded = raw.status === 'Ended';
   let nextAirDate: string | null = null;
   let nextEpisode: TVMazeNextEpisode | null = null;
 
-  if (raw._links?.nextepisode?.href) {
-    const nextHref = raw._links.nextepisode.href;
-    const match = nextHref.match(/\/episodes\/(\d+)/);
-    const nextEpId = match ? parseInt(match[1], 10) : null;
+  if (!isEnded) {
+    if (raw._links?.nextepisode?.href) {
+      const nextHref = raw._links.nextepisode.href;
+      const match = nextHref.match(/\/episodes\/(\d+)/);
+      const nextEpId = match ? parseInt(match[1], 10) : null;
 
-    const matchedEp = nextEpId !== null ? episodes.find((e) => e.id === nextEpId) : null;
+      const matchedEp = nextEpId !== null ? episodes.find((e) => e.id === nextEpId) : null;
 
-    if (matchedEp) {
-      nextAirDate = matchedEp.airdate;
-      nextEpisode = {
-        id: matchedEp.id,
-        name: matchedEp.name,
-        airdate: matchedEp.airdate,
-        airtime: matchedEp.airtime || null,
-        airstamp: matchedEp.airstamp,
-        season: matchedEp.season,
-        number: matchedEp.number,
-      };
-    } else {
-      nextEpisode = {
-        id: nextEpId,
-        name: raw._links.nextepisode.name ?? null,
-        airdate: null,
-        airtime: null,
-        airstamp: null,
-        season: null,
-        number: null,
-      };
+      if (matchedEp) {
+        nextAirDate = matchedEp.airdate;
+        nextEpisode = {
+          id: matchedEp.id,
+          name: matchedEp.name,
+          airdate: matchedEp.airdate,
+          airtime: matchedEp.airtime || null,
+          airstamp: matchedEp.airstamp,
+          season: matchedEp.season,
+          number: matchedEp.number,
+        };
+      } else {
+        const linkAirDate = raw._links.nextepisode.airdate ?? raw.nextAirDate ?? null;
+        nextAirDate = linkAirDate;
+        nextEpisode = {
+          id: nextEpId,
+          name: raw._links.nextepisode.name ?? null,
+          airdate: linkAirDate,
+          airtime: null,
+          airstamp: null,
+          season: null,
+          number: null,
+        };
+      }
+    }
+
+    // Fallback 1: check embedded episode schedule for upcoming episode
+    if (!nextAirDate && episodes.length > 0) {
+      const upcomingEp = episodes.find((ep) => ep.airdate && isFutureAirDate(ep.airdate));
+      if (upcomingEp) {
+        nextAirDate = upcomingEp.airdate;
+        if (!nextEpisode) {
+          nextEpisode = {
+            id: upcomingEp.id,
+            name: upcomingEp.name,
+            airdate: upcomingEp.airdate,
+            airtime: upcomingEp.airtime || null,
+            airstamp: upcomingEp.airstamp,
+            season: upcomingEp.season,
+            number: upcomingEp.number,
+          };
+        }
+      }
+    }
+
+    // Fallback 2: check schedule broadcast days
+    if (!nextAirDate && raw.schedule) {
+      nextAirDate = getNextAirDateFromSchedule(raw.schedule);
     }
   }
 
@@ -446,6 +600,7 @@ export function toCreateTitleInput(
   show: TVMazeSearchResult | TVMazeShowDetails,
   watchStatus: WatchStatus = 'Plan to Watch'
 ): CreateTitleInput {
+  const isEnded = show.status === 'Ended';
   return {
     externalId: show.id,
     type: 'tv',
@@ -456,7 +611,8 @@ export function toCreateTitleInput(
     rating: show.rating,
     genres: show.genres,
     firstAirDate: show.premiered,
-    nextAirDate: show.nextAirDate,
+    nextAirDate: isEnded ? null : (show.nextAirDate ?? null),
+    airingStatus: show.status,
     totalEpisodes: 'totalEpisodesCount' in show ? show.totalEpisodesCount : 0,
   };
 }

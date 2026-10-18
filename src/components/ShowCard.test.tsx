@@ -130,4 +130,126 @@ describe("ShowCard Component", () => {
     expect(onQuickIncrement).toHaveBeenCalledWith(mockTitle);
     expect(onSelect).not.toHaveBeenCalled();
   });
+
+  describe("Upcoming Air Date Badge", () => {
+    const fixedNow = new Date("2026-10-18T12:00:00Z");
+
+    it("renders 'Next Ep: [Date]' badge when show has an upcoming air date in the future", () => {
+      const upcomingTitle: Title = {
+        ...mockTitle,
+        nextAirDate: "2027-05-20",
+        airingStatus: "Running",
+      };
+
+      render(
+        <ShowCard
+          title={upcomingTitle}
+          nextEpisode={mockNextEpisode}
+          referenceDate={fixedNow}
+        />
+      );
+
+      const badge = screen.getByTestId("upcoming-air-date-badge");
+      expect(badge).toBeInTheDocument();
+      expect(badge).toHaveTextContent("Next Ep: May 20, 2027");
+    });
+
+    it("renders 'Next Ep: [Date]' badge alongside 'Caught Up' when all released episodes are watched", () => {
+      const caughtUpWithUpcoming: Title = {
+        ...mockTitle,
+        totalEpisodes: 10,
+        watchedEpisodes: 10,
+        nextAirDate: "2026-11-01",
+        airingStatus: "Running",
+      };
+
+      render(
+        <ShowCard
+          title={caughtUpWithUpcoming}
+          nextEpisode={null}
+          referenceDate={fixedNow}
+        />
+      );
+
+      expect(screen.getByText("Caught Up")).toBeInTheDocument();
+      const badge = screen.getByTestId("upcoming-air-date-badge");
+      expect(badge).toBeInTheDocument();
+      expect(badge).toHaveTextContent("Next Ep: Nov 1, 2026");
+    });
+
+    it("omits the upcoming badge when show has ended (airingStatus: 'Ended')", () => {
+      const endedTitle: Title = {
+        ...mockTitle,
+        nextAirDate: "2027-05-20",
+        airingStatus: "Ended",
+      };
+
+      render(
+        <ShowCard
+          title={endedTitle}
+          nextEpisode={mockNextEpisode}
+          referenceDate={fixedNow}
+        />
+      );
+
+      expect(screen.queryByTestId("upcoming-air-date-badge")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Next Ep:/i)).not.toBeInTheDocument();
+    });
+
+    it("omits the upcoming badge when title has ended via status: 'Ended'", () => {
+      const endedTitle = {
+        ...mockTitle,
+        status: "Ended" as any,
+        nextAirDate: "2027-05-20",
+      };
+
+      render(
+        <ShowCard
+          title={endedTitle}
+          nextEpisode={mockNextEpisode}
+          referenceDate={fixedNow}
+        />
+      );
+
+      expect(screen.queryByTestId("upcoming-air-date-badge")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Next Ep:/i)).not.toBeInTheDocument();
+    });
+
+    it("omits the upcoming badge when nextAirDate is in the past", () => {
+      const pastTitle: Title = {
+        ...mockTitle,
+        nextAirDate: "2026-01-15",
+        airingStatus: "Running",
+      };
+
+      render(
+        <ShowCard
+          title={pastTitle}
+          nextEpisode={mockNextEpisode}
+          referenceDate={fixedNow}
+        />
+      );
+
+      expect(screen.queryByTestId("upcoming-air-date-badge")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Next Ep:/i)).not.toBeInTheDocument();
+    });
+
+    it("omits the upcoming badge when nextAirDate is null or undefined", () => {
+      const noAirDateTitle: Title = {
+        ...mockTitle,
+        nextAirDate: null,
+      };
+
+      render(
+        <ShowCard
+          title={noAirDateTitle}
+          nextEpisode={mockNextEpisode}
+          referenceDate={fixedNow}
+        />
+      );
+
+      expect(screen.queryByTestId("upcoming-air-date-badge")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Next Ep:/i)).not.toBeInTheDocument();
+    });
+  });
 });
