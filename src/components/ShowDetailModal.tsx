@@ -13,13 +13,13 @@ import {
   Clock,
   Check,
 } from "lucide-react";
-import type { Title, WatchStatus } from "../lib/types";
-import { TrackerStore, trackerStore as defaultStore } from "../lib/store";
+import type { Title, WatchStatus, EpisodeRecord, TitleWithEpisodes } from "../lib/types";
+import { TrackerStore, trackerStore as defaultStore, findNextEpisode } from "../lib/store";
 
 export interface ShowDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
-  title?: Title | null;
+  title?: Title | TitleWithEpisodes | null;
   titleId?: string | null;
   store?: TrackerStore;
   debounceMs?: number;
@@ -57,7 +57,22 @@ export function ShowDetailModal({
     [isOpen, effectiveTitleId, store]
   );
 
+  // Live query to keep episodes reactive with IndexedDB updates
+  const liveEpisodes = useLiveQuery(
+    async () => {
+      if (!isOpen || !effectiveTitleId) return [];
+      return await store.getEpisodes(effectiveTitleId);
+    },
+    [isOpen, effectiveTitleId, store]
+  );
+
   const currentTitle = liveTitle ?? title ?? null;
+  const episodes: EpisodeRecord[] =
+    liveEpisodes ??
+    (title && "episodes" in title ? ((title as TitleWithEpisodes).episodes ?? []) : []);
+
+  // Selected season state
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
 
   // Local state for notes & autosave
   const [notes, setNotes] = useState(currentTitle?.notes ?? "");
@@ -69,13 +84,14 @@ export function ShowDetailModal({
   const notesRef = useRef(notes);
   notesRef.current = notes;
 
-  // Sync notes when currentTitle id changes (e.g. opened for different title)
+  // Sync notes & reset season when currentTitle id changes (e.g. opened for different title)
   useEffect(() => {
     if (currentTitle) {
       if (activeTitleIdRef.current !== currentTitle.id) {
         activeTitleIdRef.current = currentTitle.id;
         setNotes(currentTitle.notes ?? "");
         setSaveStatus("idle");
+        setSelectedSeason(null);
         if (notesTimerRef.current) {
           clearTimeout(notesTimerRef.current);
           notesTimerRef.current = null;
@@ -165,12 +181,60 @@ export function ShowDetailModal({
     }
   };
 
+  const handleToggleEpisode = async (episodeId: string, isWatched: boolean) => {
+    try {
+      await store.toggleEpisodeWatched(episodeId, isWatched);
+    } catch (err) {
+      console.error("Failed to toggle episode:", err);
+    }
+  };
+
+  const handleMarkSeasonWatched = async (seasonNum: number, isWatched: boolean) => {
+    if (!currentTitle) return;
+    try {
+      await store.markSeasonWatched(currentTitle.id, seasonNum, isWatched);
+    } catch (err) {
+      console.error("Failed to mark season watched:", err);
+    }
+  };
+
   if (!isOpen || !currentTitle) {
     return null;
   }
 
   const currentRating = currentTitle.rating ?? null;
   const currentStatus = currentTitle.status;
+
+  const seasons = Array.from(new Set(episodes.map((e) => e.seasonNumber))).sort((a, b) => a - b);
+  const activeSeason =
+    selectedSeason !== null && seasons.includes(selectedSeason)
+      ? selectedSeason
+      : (seasons[0] ?? 1);
+
+  const activeSeasonEpisodes = episodes.filter((e) => e.seasonNumber === activeSeason);
+  const seasonWatchedCount = activeSeasonEpisodes.filter((e) => e.isWatched).length;
+  const seasonTotalCount = activeSeasonEpisodes.length;
+  const isSeasonAllWatched = seasonTotalCount > 0 && seasonWatchedCount === seasonTotalCount;
+
+  const effectiveTotalCount =
+    episodes.length > 0
+      ? episodes.length
+      : (currentTitle?.totalEpisodes || 0);
+
+  const effectiveWatchedCount =
+    episodes.length > 0
+      ? episodes.filter((e) => e.isWatched).length
+      : (currentTitle?.watchedEpisodes || 0);
+
+  const progressPercentage =
+    effectiveTotalCount > 0
+      ? Math.min(100, Math.round((effectiveWatchedCount / effectiveTotalCount) * 100))
+      : 0;
+
+  const nextEpisode = findNextEpisode(episodes);
+  const nextEpisodeBadge = nextEpisode
+    ? `S${String(nextEpisode.seasonNumber).padStart(2, "0")}E${String(nextEpisode.episodeNumber).padStart(2, "0")}`
+    : null;
 
   return (
     <div
@@ -279,6 +343,53 @@ export function ShowDetailModal({
             </div>
           </div>
 
+          {/* Overall Show Progress Bar & Next Episode Tag */}
+          {effectiveTotalCount > 0 && (
+            <section
+              aria-label="Episode Progress"
+              className="p-3.5 sm:p-4 bg-slate-950/60 border border-slate-800 rounded-xl space-y-2"
+            >
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Progress
+                  </span>
+                  {nextEpisodeBadge ? (
+                    <span
+                      data-testid="next-episode-tag"
+                      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-950/80 text-indigo-300 border border-indigo-700/60 shadow-sm"
+                    >
+                      Next: {nextEpisodeBadge}
+                      {nextEpisode?.name ? ` - ${nextEpisode.name}` : ""}
+                    </span>
+                  ) : effectiveWatchedCount >= effectiveTotalCount && effectiveTotalCount > 0 ? (
+                    <span
+                      data-testid="next-episode-tag"
+                      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 shadow-sm"
+                    >
+                      Caught Up
+                    </span>
+                  ) : null}
+                </div>
+                <span className="text-xs font-medium text-slate-300">
+                  {effectiveWatchedCount} / {effectiveTotalCount} eps ({progressPercentage}%)
+                </span>
+              </div>
+              <div
+                role="progressbar"
+                aria-valuenow={progressPercentage}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                className="w-full h-2 bg-slate-800 rounded-full overflow-hidden"
+              >
+                <div
+                  className="h-full bg-indigo-600 rounded-full transition-all duration-300"
+                  style={{ width: `${progressPercentage}%` }}
+                />
+              </div>
+            </section>
+          )}
+
           {/* Synopsis Section */}
           <section aria-label="Synopsis" className="space-y-1.5">
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -342,6 +453,103 @@ export function ShowDetailModal({
               })}
             </div>
           </section>
+
+          {/* Interactive Season & Episode Checklist */}
+          {episodes.length > 0 && (
+            <section aria-label="Season & Episode Checklist" className="space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Seasons & Episodes
+                </h3>
+                <button
+                  type="button"
+                  data-testid="mark-season-watched-btn"
+                  onClick={() => handleMarkSeasonWatched(activeSeason, !isSeasonAllWatched)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                    isSeasonAllWatched
+                      ? "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
+                      : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm"
+                  }`}
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>
+                    {isSeasonAllWatched ? "Mark Season as Unwatched" : "Mark Season as Watched"}
+                  </span>
+                </button>
+              </div>
+
+              {/* Season Selector Tabs */}
+              <div
+                role="tablist"
+                aria-label="Season selector tabs"
+                className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin"
+              >
+                {seasons.map((s) => {
+                  const sEps = episodes.filter((e) => e.seasonNumber === s);
+                  const sWatched = sEps.filter((e) => e.isWatched).length;
+                  const sTotal = sEps.length;
+                  const isSelected = activeSeason === s;
+
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      role="tab"
+                      aria-selected={isSelected}
+                      onClick={() => setSelectedSeason(s)}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 cursor-pointer ${
+                        isSelected
+                          ? "bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-400"
+                          : "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700/60"
+                      }`}
+                    >
+                      Season {s} ({sWatched}/{sTotal})
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Episode Checklist */}
+              <div className="bg-slate-950/60 border border-slate-800 rounded-xl divide-y divide-slate-800/60 overflow-hidden">
+                {activeSeasonEpisodes.map((ep) => (
+                  <label
+                    key={ep.id}
+                    htmlFor={`episode-checkbox-${ep.id}`}
+                    className="flex items-center gap-3 p-3 hover:bg-slate-800/40 transition cursor-pointer select-none"
+                  >
+                    <input
+                      id={`episode-checkbox-${ep.id}`}
+                      type="checkbox"
+                      data-testid={`episode-checkbox-${ep.id}`}
+                      aria-label={`Episode ${ep.episodeNumber}: ${ep.name}`}
+                      checked={ep.isWatched}
+                      onChange={(e) => handleToggleEpisode(ep.id, e.target.checked)}
+                      className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900 cursor-pointer"
+                    />
+                    <div className="flex-1 min-w-0 flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                      <div className="flex items-baseline gap-2 min-w-0">
+                        <span className="text-xs font-mono font-medium text-slate-400 shrink-0">
+                          Episode {ep.episodeNumber}
+                        </span>
+                        <span
+                          className={`text-sm truncate ${
+                            ep.isWatched ? "text-slate-400 line-through" : "text-slate-200"
+                          }`}
+                        >
+                          {ep.name}
+                        </span>
+                      </div>
+                      {ep.airDate && (
+                        <span className="text-xs text-slate-400 shrink-0">
+                          {ep.airDate}
+                        </span>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* 1–10 Rating Component */}
           <section aria-labelledby="rating-section-title" className="space-y-2">
