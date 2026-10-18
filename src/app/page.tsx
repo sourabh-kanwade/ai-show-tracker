@@ -7,16 +7,20 @@ import { SearchBar } from "../components/SearchBar";
 import { SettingsModal } from "../components/SettingsModal";
 import { CurrentlyWatchingGrid } from "../components/CurrentlyWatchingGrid";
 import { TitleCatalogGrid } from "../components/TitleCatalogGrid";
+import { ShowDetailModal } from "../components/ShowDetailModal";
 import { TrackerStore, trackerStore as defaultStore } from "../lib/store";
-import type { WatchStatus } from "../lib/types";
+import type { WatchStatus, Title } from "../lib/types";
 
 export interface HomeProps {
   store?: TrackerStore;
 }
 
+export type HomePageProps = HomeProps;
+
 export default function Home({ store = defaultStore }: HomeProps = {}) {
   const [activeTab, setActiveTab] = useState<WatchStatus>("Watching");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [selectedTitle, setSelectedTitle] = useState<Title | null>(null);
 
   const titles = useLiveQuery(() => store.getTitlesByStatus(), [store]);
 
@@ -149,28 +153,43 @@ export default function Home({ store = defaultStore }: HomeProps = {}) {
           {activeTab === "Watching" && (
             <section aria-label="Currently Watching">
               <h2 className="sr-only">Currently Watching</h2>
-              <CurrentlyWatchingGrid store={store} />
+              <CurrentlyWatchingGrid
+                store={store}
+                onSelectTitle={(title) => setSelectedTitle(title)}
+              />
             </section>
           )}
 
           {activeTab === "Plan to Watch" && (
             <section aria-label="Watchlist">
               <h2 className="sr-only">Watchlist</h2>
-              <TitleCatalogGrid status="Plan to Watch" store={store} />
+              <TitleCatalogGrid
+                status="Plan to Watch"
+                store={store}
+                onSelectTitle={(title) => setSelectedTitle(title)}
+              />
             </section>
           )}
 
           {activeTab === "Completed" && (
             <section aria-label="Completed">
               <h2 className="sr-only">Completed</h2>
-              <TitleCatalogGrid status="Completed" store={store} />
+              <TitleCatalogGrid
+                status="Completed"
+                store={store}
+                onSelectTitle={(title) => setSelectedTitle(title)}
+              />
             </section>
           )}
 
           {activeTab === "Dropped" && (
             <section aria-label="Dropped">
               <h2 className="sr-only">Dropped</h2>
-              <TitleCatalogGrid status="Dropped" store={store} />
+              <TitleCatalogGrid
+                status="Dropped"
+                store={store}
+                onSelectTitle={(title) => setSelectedTitle(title)}
+              />
             </section>
           )}
         </div>
@@ -179,6 +198,13 @@ export default function Home({ store = defaultStore }: HomeProps = {}) {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        store={store}
+      />
+
+      <ShowDetailModal
+        isOpen={!!selectedTitle}
+        title={selectedTitle}
+        onClose={() => setSelectedTitle(null)}
         store={store}
       />
     </div>
