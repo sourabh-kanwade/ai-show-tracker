@@ -10,6 +10,7 @@ import {
   XCircle,
   Star,
   Loader2,
+  Film,
 } from "lucide-react";
 import type { Title, WatchStatus } from "../lib/types";
 import {
@@ -53,6 +54,13 @@ export function SearchModal({
     type: "success" | "error";
   } | null>(null);
 
+  const [isAddingMovie, setIsAddingMovie] = useState(false);
+  const [movieName, setMovieName] = useState("");
+  const [movieYear, setMovieYear] = useState("");
+  const [movieGenres, setMovieGenres] = useState("");
+  const [movieOverview, setMovieOverview] = useState("");
+  const [isSavingMovie, setIsSavingMovie] = useState(false);
+
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Sync state during render when props change
@@ -67,6 +75,11 @@ export function SearchModal({
       setResults([]);
       setIsLoading(false);
       setError(null);
+      setIsAddingMovie(false);
+      setMovieName("");
+      setMovieYear("");
+      setMovieGenres("");
+      setMovieOverview("");
     }
   } else if (isOpen && initialQuery !== prevInitialQuery) {
     setPrevInitialQuery(initialQuery);
@@ -170,8 +183,12 @@ export function SearchModal({
   const handleAddToWatchlist = async (show: TVMazeSearchResult) => {
     setLoadingAction((prev) => ({ ...prev, [show.id]: "watchlist" }));
     try {
-      const titleInput = toCreateTitleInput(show, "Plan to Watch");
-      const created = await store.addTitle(titleInput);
+      const details = await getShowWithEpisodes(show.id, customFetch);
+      const titleInput = toCreateTitleInput(details, "Plan to Watch");
+      const episodesInput = details.episodes.map((ep) =>
+        toCreateEpisodeInput(ep)
+      );
+      const created = await store.addTitle(titleInput, episodesInput);
       setLibraryMap((prev) => new Map(prev).set(String(show.id), "Plan to Watch"));
       setToast({
         message: `Added "${show.name}" to Watchlist`,
@@ -230,6 +247,58 @@ export function SearchModal({
     }
   };
 
+  const handleSaveMovie = async (status: "Plan to Watch" | "Completed") => {
+    const trimmed = movieName.trim();
+    if (!trimmed) {
+      setToast({
+        message: "Movie title is required",
+        type: "error",
+      });
+      return;
+    }
+
+    setIsSavingMovie(true);
+    try {
+      const year = movieYear.trim();
+      const genresList = movieGenres
+        ? movieGenres
+            .split(",")
+            .map((g) => g.trim())
+            .filter(Boolean)
+        : [];
+
+      const created = await store.addTitle({
+        name: trimmed,
+        type: "movie",
+        status,
+        overview: movieOverview.trim(),
+        genres: genresList,
+        firstAirDate: year ? `${year}-01-01` : null,
+        totalEpisodes: 1,
+        watchedEpisodes: status === "Completed" ? 1 : 0,
+      });
+
+      setToast({
+        message: `Added movie "${created.name}" to library`,
+        type: "success",
+      });
+
+      onShowAdded?.(created, status === "Completed" ? "watching" : "watchlist");
+      setIsAddingMovie(false);
+      setMovieName("");
+      setMovieYear("");
+      setMovieGenres("");
+      setMovieOverview("");
+    } catch (err) {
+      setToast({
+        message: err instanceof Error ? err.message : "Failed to add movie",
+        type: "error",
+      });
+    } finally {
+      setIsSavingMovie(false);
+    }
+  };
+
   if (!isOpen) {
     return null;
   }
@@ -277,6 +346,19 @@ export function SearchModal({
           )}
           <button
             type="button"
+            onClick={() => {
+              if (!isAddingMovie && query.trim()) {
+                setMovieName(query.trim());
+              }
+              setIsAddingMovie((prev) => !prev);
+            }}
+            aria-label="Add Movie Manually"
+            className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer shrink-0"
+          >
+            {isAddingMovie ? "Search Shows" : "Add Movie"}
+          </button>
+          <button
+            type="button"
             onClick={onClose}
             aria-label="Close"
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition ml-1"
@@ -287,41 +369,169 @@ export function SearchModal({
 
         {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {isLoading && (
-            <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
-              <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
-              <p className="text-sm font-medium">Searching TV shows...</p>
-            </div>
-          )}
+          {isAddingMovie ? (
+            <div className="space-y-4" data-testid="add-movie-form">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Film className="w-5 h-5 text-indigo-400" />
+                  <h3 className="text-sm font-semibold text-white">Add Movie Manually</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingMovie(false)}
+                  className="text-xs text-slate-400 hover:text-slate-200 transition underline cursor-pointer"
+                >
+                  Back to search
+                </button>
+              </div>
 
-          {error && !isLoading && (
-            <div className="p-4 bg-rose-950/40 border border-rose-800/60 rounded-lg text-rose-300 text-sm">
-              <p className="font-medium">Error searching TV shows</p>
-              <p className="text-xs text-rose-400 mt-1">{error}</p>
-            </div>
-          )}
+              <div className="space-y-3">
+                <div>
+                  <label
+                    htmlFor="movie-title-input"
+                    className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1"
+                  >
+                    Movie Title *
+                  </label>
+                  <input
+                    id="movie-title-input"
+                    type="text"
+                    value={movieName}
+                    onChange={(e) => setMovieName(e.target.value)}
+                    placeholder="e.g. Inception"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
 
-          {!isLoading && !error && trimmedQuery === "" && (
-            <div className="text-center py-16 text-slate-500">
-              <Search className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-medium">Search for TV shows</p>
-              <p className="text-xs text-slate-600 mt-1">
-                Type a title above to search TVMaze and add to your library.
-              </p>
-            </div>
-          )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label
+                      htmlFor="movie-year-input"
+                      className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1"
+                    >
+                      Release Year
+                    </label>
+                    <input
+                      id="movie-year-input"
+                      type="text"
+                      value={movieYear}
+                      onChange={(e) => setMovieYear(e.target.value)}
+                      placeholder="e.g. 2010"
+                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
 
-          {!isLoading && !error && trimmedQuery !== "" && results.length === 0 && (
-            <div className="text-center py-14 text-slate-400">
-              <Tv className="w-12 h-12 mx-auto mb-3 opacity-30 text-slate-500" />
-              <p className="text-sm font-medium">
-                No shows found for &quot;{trimmedQuery}&quot;
-              </p>
-              <p className="text-xs text-slate-500 mt-1">
-                Try checking the spelling or searching for a different show.
-              </p>
+                  <div>
+                    <label
+                      htmlFor="movie-genres-input"
+                      className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1"
+                    >
+                      Genres
+                    </label>
+                    <input
+                      id="movie-genres-input"
+                      type="text"
+                      value={movieGenres}
+                      onChange={(e) => setMovieGenres(e.target.value)}
+                      placeholder="e.g. Sci-Fi, Action"
+                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="movie-overview-input"
+                    className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1"
+                  >
+                    Synopsis
+                  </label>
+                  <textarea
+                    id="movie-overview-input"
+                    rows={3}
+                    value={movieOverview}
+                    onChange={(e) => setMovieOverview(e.target.value)}
+                    placeholder="Brief description or synopsis..."
+                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingMovie(false)}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveMovie("Plan to Watch")}
+                  disabled={isSavingMovie || !movieName.trim()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition disabled:opacity-50 cursor-pointer"
+                >
+                  <Bookmark className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Add to Watchlist</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveMovie("Completed")}
+                  disabled={isSavingMovie || !movieName.trim()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition disabled:opacity-50 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Mark as Watched</span>
+                </button>
+              </div>
             </div>
-          )}
+          ) : (
+            <>
+              {isLoading && (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                  <p className="text-sm font-medium">Searching TV shows...</p>
+                </div>
+              )}
+
+              {error && !isLoading && (
+                <div className="p-4 bg-rose-950/40 border border-rose-800/60 rounded-lg text-rose-300 text-sm">
+                  <p className="font-medium">Error searching TV shows</p>
+                  <p className="text-xs text-rose-400 mt-1">{error}</p>
+                </div>
+              )}
+
+              {!isLoading && !error && trimmedQuery === "" && (
+                <div className="text-center py-16 text-slate-500">
+                  <Search className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm font-medium">Search for TV shows</p>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Type a title above to search TVMaze and add to your library.
+                  </p>
+                </div>
+              )}
+
+              {!isLoading && !error && trimmedQuery !== "" && results.length === 0 && (
+                <div className="text-center py-14 text-slate-400">
+                  <Tv className="w-12 h-12 mx-auto mb-3 opacity-30 text-slate-500" />
+                  <p className="text-sm font-medium">
+                    No shows found for &quot;{trimmedQuery}&quot;
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1 mb-4">
+                    Looking for a movie or an unlisted title? Add it manually.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMovieName(trimmedQuery);
+                      setIsAddingMovie(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition cursor-pointer"
+                  >
+                    <span>Add &quot;{trimmedQuery}&quot; as Movie</span>
+                  </button>
+                </div>
+              )}
 
           {!isLoading && results.length > 0 && (
             <div className="divide-y divide-slate-800/80 space-y-4">
@@ -477,8 +687,10 @@ export function SearchModal({
               })}
             </div>
           )}
-        </div>
-      </div>
+        </>
+      )}
+    </div>
+  </div>
 
       {/* Toast Notification for Visual Feedback */}
       {toast && (

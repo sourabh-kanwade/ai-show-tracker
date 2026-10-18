@@ -1010,6 +1010,44 @@ describe("TrackerStore", () => {
       ).rejects.toThrow(/not found/i);
     });
   });
+
+  describe("toggleMovieWatched", () => {
+    it("toggles movie watched state between Completed (1/1) and Plan to Watch (0/1)", async () => {
+      const movie = await store.addTitle({
+        name: "Inception",
+        type: "movie",
+        status: "Plan to Watch",
+      });
+
+      expect(movie.totalEpisodes).toBe(1);
+      expect(movie.watchedEpisodes).toBe(0);
+      expect(movie.status).toBe("Plan to Watch");
+
+      // Toggle to watched
+      const watched = await store.toggleMovieWatched(movie.id, true);
+      expect(watched?.watchedEpisodes).toBe(1);
+      expect(watched?.status).toBe("Completed");
+
+      // Toggle back to unwatched
+      const unwatched = await store.toggleMovieWatched(movie.id, false);
+      expect(unwatched?.watchedEpisodes).toBe(0);
+      expect(unwatched?.status).toBe("Plan to Watch");
+    });
+
+    it("returns null when toggling a non-movie or missing title", async () => {
+      const tvShow = await store.addTitle({
+        name: "Severance",
+        type: "tv",
+        status: "Watching",
+      });
+
+      const result = await store.toggleMovieWatched(tvShow.id, true);
+      expect(result).toBeNull();
+
+      const missing = await store.toggleMovieWatched("non-existent-id", true);
+      expect(missing).toBeNull();
+    });
+  });
 });
 
 

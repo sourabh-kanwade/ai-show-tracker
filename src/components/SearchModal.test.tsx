@@ -26,10 +26,16 @@ describe("SearchModal Component", () => {
           json: () => Promise.resolve(MOCK_SEARCH_RESULTS_PAYLOAD),
         });
       }
-      if (url.includes("/shows/44458?embed=episodes")) {
+      if (url.includes("?embed=episodes")) {
+        const isBreakingBad = url.includes("/shows/169");
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve(MOCK_SHOW_WITH_EPISODES_PAYLOAD),
+          json: () =>
+            Promise.resolve({
+              ...MOCK_SHOW_WITH_EPISODES_PAYLOAD,
+              id: isBreakingBad ? 169 : 44458,
+              name: isBreakingBad ? "Breaking Bad" : "Severance",
+            }),
         });
       }
       return Promise.resolve({
@@ -215,10 +221,14 @@ describe("SearchModal Component", () => {
     })[0];
     await user.click(addWatchlistBtn);
 
-    // Verify store contains title
+    // Verify store contains title and episodes
     await waitFor(async () => {
       const titles = await store.getTitlesByStatus("Plan to Watch");
-      expect(titles.some((t) => t.name === "Breaking Bad")).toBe(true);
+      const breakingBad = titles.find((t) => t.name === "Breaking Bad");
+      expect(breakingBad).toBeDefined();
+      expect(breakingBad?.totalEpisodes).toBeGreaterThan(0);
+      const episodes = await store.getEpisodes(breakingBad!.id);
+      expect(episodes.length).toBeGreaterThan(0);
     });
 
     // Verify visual toast feedback appears
@@ -336,6 +346,127 @@ describe("SearchModal Component", () => {
       expect(
         screen.getByText(/no shows found for "NonExistentQueryXYZ"/i)
       ).toBeInTheDocument();
+    });
+  });
+
+  describe("Add Movie Manually", () => {
+    it("allows adding a movie manually to the Watchlist (Plan to Watch)", async () => {
+      const user = userEvent.setup();
+      const onShowAdded = vi.fn();
+
+      render(
+        <SearchModal
+          isOpen={true}
+          onClose={vi.fn()}
+          store={store}
+          onShowAdded={onShowAdded}
+        />
+      );
+
+      // Click "Add Movie" button in header
+      const addMovieBtn = screen.getByRole("button", { name: /add movie manually/i });
+      await user.click(addMovieBtn);
+
+      // Verify form is displayed
+      expect(screen.getByTestId("add-movie-form")).toBeInTheDocument();
+      expect(screen.getByLabelText(/movie title \*/i)).toBeInTheDocument();
+
+      // Fill in details
+      await user.type(screen.getByLabelText(/movie title \*/i), "Inception");
+      await user.type(screen.getByLabelText(/release year/i), "2010");
+      await user.type(screen.getByLabelText(/genres/i), "Action, Sci-Fi");
+      await user.type(screen.getByLabelText(/synopsis/i), "Dream within a dream.");
+
+      // Click "Add to Watchlist"
+      const submitBtn = screen.getByRole("button", { name: /add to watchlist/i });
+      await user.click(submitBtn);
+
+      // Verify store has the movie
+      await waitFor(async () => {
+        const titles = await store.getTitlesByStatus("Plan to Watch");
+        const inception = titles.find((t) => t.name === "Inception");
+        expect(inception).toBeDefined();
+        expect(inception?.type).toBe("movie");
+        expect(inception?.totalEpisodes).toBe(1);
+        expect(inception?.watchedEpisodes).toBe(0);
+        expect(inception?.status).toBe("Plan to Watch");
+        expect(inception?.genres).toEqual(["Action", "Sci-Fi"]);
+        expect(inception?.firstAirDate).toBe("2010-01-01");
+        expect(inception?.overview).toBe("Dream within a dream.");
+      });
+
+      expect(onShowAdded).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Inception", type: "movie" }),
+        "watchlist"
+      );
+
+      expect(
+        await screen.findByText(/added movie "Inception" to library/i)
+      ).toBeInTheDocument();
+    });
+
+    it("allows marking a movie as watched directly from the manual add form", async () => {
+      const user = userEvent.setup();
+      const onShowAdded = vi.fn();
+
+      render(
+        <SearchModal
+          isOpen={true}
+          onClose={vi.fn()}
+          store={store}
+          onShowAdded={onShowAdded}
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /add movie manually/i }));
+      await user.type(screen.getByLabelText(/movie title \*/i), "Interstellar");
+
+      const markWatchedBtn = screen.getByRole("button", { name: /mark as watched/i });
+      await user.click(markWatchedBtn);
+
+      await waitFor(async () => {
+        const titles = await store.getTitlesByStatus("Completed");
+        const movie = titles.find((t) => t.name === "Interstellar");
+        expect(movie).toBeDefined();
+        expect(movie?.type).toBe("movie");
+        expect(movie?.totalEpisodes).toBe(1);
+        expect(movie?.watchedEpisodes).toBe(1);
+        expect(movie?.status).toBe("Completed");
+      });
+
+      expect(onShowAdded).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Interstellar", status: "Completed" }),
+        "watching"
+      );
+    });
+
+    it("pre-fills movie title when triggered from empty search results state", async () => {
+      const user = userEvent.setup();
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve([]),
+      });
+
+      render(
+        <SearchModal
+          isOpen={true}
+          onClose={vi.fn()}
+          store={store}
+          customFetch={mockFetch as unknown as typeof fetch}
+        />
+      );
+
+      const input = screen.getByPlaceholderText(/search (tv )?shows/i);
+      await user.type(input, "Oppenheimer");
+
+      const addFromEmptyBtn = await screen.findByRole("button", {
+        name: /add "Oppenheimer" as movie/i,
+      });
+      await user.click(addFromEmptyBtn);
+
+      expect(screen.getByTestId("add-movie-form")).toBeInTheDocument();
+      const titleInput = screen.getByLabelText(/movie title \*/i) as HTMLInputElement;
+      expect(titleInput.value).toBe("Oppenheimer");
     });
   });
 });

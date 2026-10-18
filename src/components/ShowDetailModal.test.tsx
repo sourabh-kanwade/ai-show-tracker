@@ -588,4 +588,74 @@ describe("ShowDetailModal Component", () => {
       expect(titleInDb).toBeNull();
     });
   });
+
+  describe("Standalone Movie Tracking in Detail Modal", () => {
+    let movieTitle: Title;
+
+    beforeEach(async () => {
+      movieTitle = await store.addTitle({
+        name: "Inception",
+        type: "movie",
+        overview: "A thief who enters the dreams of others.",
+        status: "Plan to Watch",
+        totalEpisodes: 1,
+        watchedEpisodes: 0,
+      });
+    });
+
+    it("renders movie watched toggle button instead of season tabs and episode checklist", async () => {
+      render(
+        <ShowDetailModal
+          isOpen={true}
+          onClose={vi.fn()}
+          title={movieTitle}
+          store={store}
+        />
+      );
+
+      expect(screen.getByRole("switch", { name: /movie watched toggle/i })).toBeInTheDocument();
+      expect(screen.queryByRole("tablist", { name: /season selector tabs/i })).not.toBeInTheDocument();
+      expect(screen.getByText("Mark as Watched")).toBeInTheDocument();
+    });
+
+    it("clicking the movie watched toggle marks the movie as watched and completed in IndexedDB", async () => {
+      const user = userEvent.setup();
+      const onStatusChange = vi.fn();
+
+      render(
+        <ShowDetailModal
+          isOpen={true}
+          onClose={vi.fn()}
+          title={movieTitle}
+          store={store}
+          onStatusChange={onStatusChange}
+        />
+      );
+
+      const toggleBtn = screen.getByRole("switch", { name: /movie watched toggle/i });
+      expect(toggleBtn).toHaveAttribute("aria-checked", "false");
+
+      await user.click(toggleBtn);
+
+      await waitFor(async () => {
+        const updated = await store.db.titles.get(movieTitle.id);
+        expect(updated?.watchedEpisodes).toBe(1);
+        expect(updated?.status).toBe("Completed");
+      });
+
+      expect(onStatusChange).toHaveBeenCalledWith("Completed");
+
+      // Toggling again marks as unwatched and reverts to Plan to Watch
+      await user.click(toggleBtn);
+
+      await waitFor(async () => {
+        const updated = await store.db.titles.get(movieTitle.id);
+        expect(updated?.watchedEpisodes).toBe(0);
+        expect(updated?.status).toBe("Plan to Watch");
+      });
+
+      expect(onStatusChange).toHaveBeenCalledWith("Plan to Watch");
+    });
+  });
 });
+

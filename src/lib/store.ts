@@ -61,7 +61,9 @@ export class TrackerStore {
       firstAirDate: titleInput.firstAirDate ?? null,
       nextAirDate: titleInput.nextAirDate ?? null,
       airingStatus: titleInput.airingStatus ?? null,
-      totalEpisodes: titleInput.totalEpisodes ?? totalCount,
+      totalEpisodes:
+        titleInput.totalEpisodes ??
+        (titleInput.type === "movie" ? 1 : totalCount),
       watchedEpisodes:
         titleInput.watchedEpisodes ??
         (preparedEpisodes.length > 0 ? watchedCount : 0),
@@ -451,6 +453,28 @@ export class TrackerStore {
     });
 
     return preparedEpisodes;
+  }
+
+  async toggleMovieWatched(
+    titleId: string,
+    isWatched: boolean
+  ): Promise<Title | null> {
+    const title = await this.db.titles.get(titleId);
+    if (!title || title.type !== "movie") {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const watchedEpisodes = isWatched ? 1 : 0;
+    const status: WatchStatus = isWatched ? "Completed" : "Plan to Watch";
+
+    await this.db.titles.update(titleId, {
+      watchedEpisodes,
+      status,
+      updatedAt: now,
+    });
+
+    return (await this.db.titles.get(titleId)) ?? null;
   }
 }
 

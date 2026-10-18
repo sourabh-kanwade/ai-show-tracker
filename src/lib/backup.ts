@@ -124,7 +124,7 @@ export function validateBackup(json: unknown): BackupValidationResult {
     if (typeof t !== "object" || t === null) {
       return {
         valid: false,
-        error: `Invalid title at index ${i}: entry must be an object.`,
+        error: `Invalid title at index ${i}: title must be an object.`,
       };
     }
     const item = t as unknown as Record<string, unknown>;
@@ -159,7 +159,7 @@ export function validateBackup(json: unknown): BackupValidationResult {
     if (typeof e !== "object" || e === null) {
       return {
         valid: false,
-        error: `Invalid episode at index ${i}: entry must be an object.`,
+        error: `Invalid episode at index ${i}: episode must be an object.`,
       };
     }
     const item = e as unknown as Record<string, unknown>;
