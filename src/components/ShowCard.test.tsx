@@ -260,4 +260,63 @@ describe("ShowCard Component", () => {
       expect(screen.queryByText(/Next Ep:/i)).not.toBeInTheDocument();
     });
   });
+
+  describe("Movie Titles on Active Dashboard", () => {
+    const mockMovie: Title = {
+      id: "movie-1",
+      externalId: 999,
+      type: "movie",
+      name: "Inception",
+      overview: "A thief who steals corporate secrets through the use of dream-sharing technology.",
+      posterUrl: "https://example.com/inception.jpg",
+      backdropUrl: null,
+      status: "Watching",
+      genres: ["Action", "Sci-Fi"],
+      firstAirDate: "2010-07-16",
+      nextAirDate: null,
+      totalEpisodes: 1,
+      watchedEpisodes: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    it("renders enabled 'Mark Watched' button for unwatched movie in Watching status", async () => {
+      const onQuickIncrement = vi.fn();
+      render(
+        <ShowCard
+          title={mockMovie}
+          nextEpisode={null}
+          onQuickIncrement={onQuickIncrement}
+        />
+      );
+
+      const button = screen.getByRole("button", { name: /Mark Inception as watched/i });
+      expect(button).toBeInTheDocument();
+      expect(button).not.toBeDisabled();
+      expect(screen.getByText("Mark Watched")).toBeInTheDocument();
+
+      await userEvent.click(button);
+      expect(onQuickIncrement).toHaveBeenCalledWith(mockMovie);
+    });
+
+    it("renders disabled button when movie has already been watched", () => {
+      const watchedMovie: Title = {
+        ...mockMovie,
+        watchedEpisodes: 1,
+        status: "Completed",
+      };
+
+      render(
+        <ShowCard
+          title={watchedMovie}
+          nextEpisode={null}
+        />
+      );
+
+      const button = screen.getByRole("button", { name: /Mark Inception as watched/i });
+      expect(button).toBeDisabled();
+      expect(button).toHaveTextContent("Watched");
+      expect(screen.getAllByText("Watched").length).toBeGreaterThanOrEqual(1);
+    });
+  });
 });

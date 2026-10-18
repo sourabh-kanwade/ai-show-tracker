@@ -468,5 +468,30 @@ describe("SearchModal Component", () => {
       const titleInput = screen.getByLabelText(/movie title \*/i) as HTMLInputElement;
       expect(titleInput.value).toBe("Oppenheimer");
     });
+
+    it("calls onTitleAdded callback (domain-aligned alias) when a title is added", async () => {
+      const user = userEvent.setup();
+      const onTitleAdded = vi.fn();
+
+      render(
+        <SearchModal
+          isOpen={true}
+          onClose={vi.fn()}
+          store={store}
+          onTitleAdded={onTitleAdded}
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /add movie manually/i }));
+      await user.type(screen.getByLabelText(/movie title \*/i), "Dune");
+      await user.click(screen.getByRole("button", { name: /add to watchlist/i }));
+
+      await waitFor(() => {
+        expect(onTitleAdded).toHaveBeenCalledWith(
+          expect.objectContaining({ name: "Dune", status: "Plan to Watch" }),
+          "watchlist"
+        );
+      });
+    });
   });
 });

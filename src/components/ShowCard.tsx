@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Tv, Plus } from "lucide-react";
+import { Tv, Plus, Check } from "lucide-react";
 import type { Title, EpisodeRecord } from "../lib/types";
 import { formatAirDate, isFutureAirDate } from "../lib/tvmaze";
 
@@ -26,10 +26,10 @@ export function hasUpcomingAirDate(
 ): boolean {
   if (!title.nextAirDate) return false;
 
-  const rawStatus = (title as unknown as Record<string, unknown>).status;
+  const rawStatus = (title as { airingStatus?: string | null; status?: string }).status;
   const isEnded =
     title.airingStatus?.toLowerCase() === "ended" ||
-    (typeof rawStatus === "string" && rawStatus.toLowerCase() === "ended");
+    rawStatus?.toLowerCase() === "ended";
 
   if (isEnded) return false;
 
@@ -43,12 +43,15 @@ export function ShowCard({
   onQuickIncrement,
   referenceDate,
 }: ShowCardProps) {
-  const total = title.totalEpisodes || 0;
+  const isMovie = title.type === "movie";
+  const total = isMovie ? (title.totalEpisodes || 1) : (title.totalEpisodes || 0);
   const watched = title.watchedEpisodes || 0;
   const percentage = total > 0 ? Math.min(100, Math.round((watched / total) * 100)) : 0;
   const episodeBadge = formatEpisodeBadge(nextEpisode);
   const hasNextEpisode =
-    nextEpisode !== undefined
+    isMovie
+      ? watched < total
+      : nextEpisode !== undefined
       ? Boolean(nextEpisode)
       : total > 0 && watched < total;
   const showUpcoming = hasUpcomingAirDate(title, referenceDate);
@@ -95,7 +98,7 @@ export function ShowCard({
               </h3>
             </div>
 
-            {/* Next Episode Badge or Caught Up */}
+            {/* Next Episode Badge or Caught Up / Watched */}
             {episodeBadge ? (
               <div className="mb-2">
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-950/80 text-indigo-300 border border-indigo-700/60 shadow-sm">
@@ -106,6 +109,12 @@ export function ShowCard({
                     {nextEpisode.name}
                   </span>
                 )}
+              </div>
+            ) : isMovie && watched >= total && total > 0 ? (
+              <div className="mb-2">
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 shadow-sm">
+                  Watched
+                </span>
               </div>
             ) : total > 0 && watched >= total ? (
               <div className="mb-2">
@@ -141,18 +150,35 @@ export function ShowCard({
                     onQuickIncrement(title);
                   }
                 }}
-                aria-label={`Quick Increment (+1 Episode) for ${title.name}`}
+                aria-label={
+                  isMovie
+                    ? `Mark ${title.name} as watched`
+                    : `Quick Increment (+1 Episode) for ${title.name}`
+                }
                 className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
                   hasNextEpisode
                     ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm hover:shadow cursor-pointer active:scale-95"
                     : "bg-slate-800 text-slate-500 cursor-not-allowed opacity-50"
                 }`}
               >
-                <Plus className="w-3.5 h-3.5 mr-1 inline-block" />
-                +1 Episode
+                {isMovie ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 mr-1 inline-block" />
+                    {watched >= total ? "Watched" : "Mark Watched"}
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5 mr-1 inline-block" />
+                    +1 Episode
+                  </>
+                )}
               </button>
               <span className="text-xs text-slate-400 shrink-0">
-                {watched} / {total} eps ({percentage}%)
+                {isMovie
+                  ? watched >= total
+                    ? "Watched (100%)"
+                    : `${watched} / ${total} (0%)`
+                  : `${watched} / ${total} eps (${percentage}%)`}
               </span>
             </div>
             <div

@@ -189,6 +189,32 @@ export class TrackerStore {
     });
   }
 
+  private computeProgressUpdates(
+    title: Title,
+    allEpisodes: EpisodeRecord[],
+    isMarkingWatched: boolean,
+    now: string = new Date().toISOString()
+  ): { watchedEpisodes: number; isCompleted: boolean; updates: Partial<Title> } {
+    const watchedEpisodes = allEpisodes.filter((e) => e.isWatched).length;
+    const isCompleted =
+      isMarkingWatched &&
+      ((allEpisodes.length > 0 && allEpisodes.every((e) => e.isWatched)) ||
+        (title.totalEpisodes > 0 && watchedEpisodes >= title.totalEpisodes));
+
+    const updates: Partial<Title> = {
+      watchedEpisodes,
+      updatedAt: now,
+    };
+
+    if (isCompleted) {
+      updates.status = "Completed";
+    } else if (!isMarkingWatched && title.status === "Completed") {
+      updates.status = "Watching";
+    }
+
+    return { watchedEpisodes, isCompleted, updates };
+  }
+
   async toggleEpisodeWatched(
     episodeId: string,
     isWatched: boolean
@@ -207,31 +233,16 @@ export class TrackerStore {
       await this.db.episodes.update(episodeId, { isWatched, watchedAt });
       updatedEpisode = (await this.db.episodes.get(episodeId)) ?? null;
 
-      // Recalculate title's watchedEpisodes count
+      // Recalculate title progress and status
       const episodes = await this.db.episodes
         .where("titleId")
         .equals(episode.titleId)
         .toArray();
-      const watchedEpisodes = episodes.filter((e) => e.isWatched).length;
       const title = await this.db.titles.get(episode.titleId);
-
-      const isCompleted =
-        isWatched &&
-        title !== undefined &&
-        ((episodes.length > 0 && episodes.every((e) => e.isWatched)) ||
-          (title.totalEpisodes > 0 && watchedEpisodes >= title.totalEpisodes));
-
-      const updates: Partial<Title> = {
-        watchedEpisodes,
-        updatedAt: now,
-      };
-      if (isCompleted) {
-        updates.status = "Completed";
-      } else if (!isWatched && title?.status === "Completed") {
-        updates.status = "Watching";
+      if (title) {
+        const { updates } = this.computeProgressUpdates(title, episodes, isWatched, now);
+        await this.db.titles.update(episode.titleId, updates);
       }
-
-      await this.db.titles.update(episode.titleId, updates);
     });
 
     return updatedEpisode;
@@ -266,24 +277,8 @@ export class TrackerStore {
         .where("titleId")
         .equals(titleId)
         .toArray();
-      const watchedEpisodes = refreshedAll.filter((e) => e.isWatched).length;
 
-      const isCompleted =
-        refreshedAll.length > 0
-          ? refreshedAll.every((e) => e.isWatched)
-          : (title.totalEpisodes > 0 && watchedEpisodes >= title.totalEpisodes);
-
-      const updates: Partial<Title> = {
-        watchedEpisodes,
-        updatedAt: now,
-      };
-
-      if (isCompleted) {
-        updates.status = "Completed";
-      } else if (!isWatched && title.status === "Completed") {
-        updates.status = "Watching";
-      }
-
+      const { updates } = this.computeProgressUpdates(title, refreshedAll, isWatched, now);
       await this.db.titles.update(titleId, updates);
 
       const updatedList = await Promise.all(
@@ -385,19 +380,14 @@ export class TrackerStore {
         .where("titleId")
         .equals(titleId)
         .toArray();
-      const watchedEpisodes = allEpisodes.filter((e) => e.isWatched).length;
 
-      isCompleted =
-        (allEpisodes.length > 0 && allEpisodes.every((e) => e.isWatched)) ||
-        (title.totalEpisodes > 0 && watchedEpisodes >= title.totalEpisodes);
+      const progress = this.computeProgressUpdates(title, allEpisodes, true, now);
+      isCompleted = progress.isCompleted;
+      if (!isCompleted) {
+        progress.updates.status = title.status;
+      }
 
-      const nextStatus = isCompleted ? "Completed" : title.status;
-
-      await this.db.titles.update(titleId, {
-        watchedEpisodes,
-        status: nextStatus,
-        updatedAt: now,
-      });
+      await this.db.titles.update(titleId, progress.updates);
 
       updatedTitle = (await this.db.titles.get(titleId))!;
     });

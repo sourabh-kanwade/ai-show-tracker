@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import type { Title, WatchStatus, EpisodeRecord, TitleWithEpisodes } from "../lib/types";
 import { TrackerStore, trackerStore as defaultStore, findNextEpisode } from "../lib/store";
-import { formatEpisodeBadge } from "./ShowCard";
+import { formatEpisodeBadge, hasUpcomingAirDate } from "./ShowCard";
+import { formatAirDate } from "../lib/tvmaze";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 
 export interface ShowDetailModalProps {
@@ -270,6 +271,11 @@ export function ShowDetailModal({
 
   const nextEpisode = findNextEpisode(episodes);
   const nextEpisodeBadge = formatEpisodeBadge(nextEpisode);
+  const showUpcoming = currentTitle ? hasUpcomingAirDate(currentTitle) : false;
+  const formattedNextAirDate =
+    showUpcoming && currentTitle?.nextAirDate
+      ? (formatAirDate(currentTitle.nextAirDate) ?? currentTitle.nextAirDate)
+      : null;
 
   return (
     <div
@@ -359,6 +365,17 @@ export function ShowDetailModal({
                 <div className="flex items-center gap-1.5 text-xs sm:text-sm text-slate-400 mt-1">
                   <Calendar className="w-3.5 h-3.5 opacity-70" />
                   <span>Premiered: {currentTitle.firstAirDate}</span>
+                </div>
+              )}
+
+              {/* Upcoming Next Episode Air Date */}
+              {showUpcoming && formattedNextAirDate && (
+                <div
+                  data-testid="show-detail-upcoming-air-date"
+                  className="flex items-center gap-1.5 text-xs sm:text-sm text-amber-400 font-medium mt-1"
+                >
+                  <Clock className="w-3.5 h-3.5 opacity-80" />
+                  <span>Next Episode: {formattedNextAirDate}</span>
                 </div>
               )}
 
@@ -758,3 +775,6 @@ export function ShowDetailModal({
     </div>
   );
 }
+
+export { ShowDetailModal as TitleDetailModal };
+export type TitleDetailModalProps = ShowDetailModalProps;

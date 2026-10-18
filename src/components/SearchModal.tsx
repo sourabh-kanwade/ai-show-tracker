@@ -29,6 +29,7 @@ export interface SearchModalProps {
   store?: TrackerStore;
   customFetch?: typeof fetch;
   onShowAdded?: (title: Title, action: "watchlist" | "watching") => void;
+  onTitleAdded?: (title: Title, action: "watchlist" | "watching") => void;
 }
 
 export function SearchModal({
@@ -38,7 +39,13 @@ export function SearchModal({
   store = defaultStore,
   customFetch = fetch,
   onShowAdded,
+  onTitleAdded,
 }: SearchModalProps) {
+  const notifyTitleAdded = (title: Title, action: "watchlist" | "watching") => {
+    onTitleAdded?.(title, action);
+    onShowAdded?.(title, action);
+  };
+
   const [query, setQuery] = useState(initialQuery);
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
   const [prevInitialQuery, setPrevInitialQuery] = useState(initialQuery);
@@ -194,7 +201,7 @@ export function SearchModal({
         message: `Added "${show.name}" to Watchlist`,
         type: "success",
       });
-      onShowAdded?.(created, "watchlist");
+      notifyTitleAdded(created, "watchlist");
     } catch (err) {
       setToast({
         message:
@@ -229,7 +236,7 @@ export function SearchModal({
         })`,
         type: "success",
       });
-      onShowAdded?.(created, "watching");
+      notifyTitleAdded(created, "watching");
     } catch (err) {
       setToast({
         message:
@@ -283,7 +290,7 @@ export function SearchModal({
         type: "success",
       });
 
-      onShowAdded?.(created, status === "Completed" ? "watching" : "watchlist");
+      notifyTitleAdded(created, status === "Completed" ? "watching" : "watchlist");
       setIsAddingMovie(false);
       setMovieName("");
       setMovieYear("");

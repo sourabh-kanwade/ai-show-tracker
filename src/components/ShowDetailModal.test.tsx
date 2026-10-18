@@ -657,5 +657,47 @@ describe("ShowDetailModal Component", () => {
       expect(onStatusChange).toHaveBeenCalledWith("Plan to Watch");
     });
   });
+
+  describe("Upcoming Air Date and Standards Aliases", () => {
+    it("renders upcoming air date badge when title has future air date and is not ended", () => {
+      const airingTitle: Title = {
+        ...mockTitle,
+        nextAirDate: "2027-11-15T21:00:00Z",
+        airingStatus: "Running",
+      };
+
+      render(
+        <ShowDetailModal
+          isOpen={true}
+          onClose={vi.fn()}
+          title={airingTitle}
+          store={store}
+        />
+      );
+
+      const upcomingBadge = screen.getByTestId("show-detail-upcoming-air-date");
+      expect(upcomingBadge).toBeInTheDocument();
+      expect(upcomingBadge).toHaveTextContent(/Next Episode:/i);
+    });
+
+    it("omits upcoming air date badge when show is ended", () => {
+      const endedTitle: Title = {
+        ...mockTitle,
+        nextAirDate: "2027-11-15T21:00:00Z",
+        airingStatus: "Ended",
+      };
+
+      render(
+        <ShowDetailModal
+          isOpen={true}
+          onClose={vi.fn()}
+          title={endedTitle}
+          store={store}
+        />
+      );
+
+      expect(screen.queryByTestId("show-detail-upcoming-air-date")).not.toBeInTheDocument();
+    });
+  });
 });
 
